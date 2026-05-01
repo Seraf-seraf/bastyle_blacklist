@@ -1,4 +1,3 @@
-
 # Базовый образ для Go
 FROM golang:latest
 
@@ -6,7 +5,7 @@ FROM golang:latest
 RUN mkdir /app
 
 # Копирование файлов в директорию app
-ADD . /app/
+ADD .. /app/
 
 # Установка рабочей директории
 WORKDIR /app
@@ -15,7 +14,7 @@ WORKDIR /app
 RUN go get -d
 
 # Сборка приложения
-RUN go build -o main .
+RUN go build /app/cmd/main.go -o main
 
 # Запуск бота
 CMD ["/app/main"]

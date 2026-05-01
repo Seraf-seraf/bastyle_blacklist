@@ -1,0 +1,6 @@
+.idea
+.codex/
+.env
+*.log
+vendor/
+main
