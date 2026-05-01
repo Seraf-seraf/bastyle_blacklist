@@ -1,6 +1,6 @@
-module tgBot
+module github.com/Seraf-seraf/bastyle_blacklist
 
-go 1.20
+go 1.25.4
 
 require (
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1

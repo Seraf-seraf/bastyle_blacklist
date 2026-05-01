@@ -3,8 +3,9 @@ package main
 import (
 	"log"
 	"os"
-	"tgBot/internal/blacklist"
-	"tgBot/internal/policy"
+
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/blacklist"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/policy"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
