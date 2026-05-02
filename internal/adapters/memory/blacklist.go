@@ -13,20 +13,22 @@ func NewBlacklistStore(buffer int) *BlacklistStore {
 	}
 }
 
-func (b *BlacklistStore) IsBlocked(FileUniqueID string) bool {
+func (b *BlacklistStore) IsBlocked(FileUniqueID string) (bool, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	if _, ok := b.ban[FileUniqueID]; ok {
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
-func (b *BlacklistStore) Block(FileUniqueID string) {
+func (b *BlacklistStore) Block(FileUniqueID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	b.ban[FileUniqueID] = struct{}{}
+
+	return nil
 }

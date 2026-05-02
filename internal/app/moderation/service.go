@@ -48,7 +48,9 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 
 			fileID := target.FileUniqueID
 			if fileID != "" {
-				s.blacklist.Block(fileID)
+				if err := s.blacklist.Block(fileID); err != nil {
+					return err
+				}
 			}
 
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
@@ -68,7 +70,16 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 			continue
 		}
 
-		if id := target.FileUniqueID; id != "" && s.blacklist.IsBlocked(id) {
+		if target.FileUniqueID == "" {
+			continue
+		}
+
+		blocked, err := s.blacklist.IsBlocked(target.FileUniqueID)
+		if err != nil {
+			return err
+		}
+
+		if blocked {
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
 				return err
 			}

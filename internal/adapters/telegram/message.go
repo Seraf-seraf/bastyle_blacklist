@@ -6,11 +6,16 @@ import (
 )
 
 func MessageFromTelegram(msg *tgbotapi.Message) domain.Message {
+	content := contentFromTelegram(msg)
 	message := domain.Message{
 		ID:           msg.MessageID,
 		ChatID:       msg.Chat.ID,
 		Command:      msg.Command(),
-		FileUniqueID: fileUniqueID(msg),
+		FileUniqueID: content.FileUniqueID,
+	}
+
+	if !content.IsZero() {
+		message.Content = &content
 	}
 
 	if msg.From != nil {
@@ -25,17 +30,55 @@ func MessageFromTelegram(msg *tgbotapi.Message) domain.Message {
 	return message
 }
 
-func fileUniqueID(msg *tgbotapi.Message) string {
+func contentFromTelegram(msg *tgbotapi.Message) domain.Content {
 	switch {
 	case msg.Photo != nil && len(msg.Photo) > 0:
-		return msg.Photo[len(msg.Photo)-1].FileUniqueID
+		photo := msg.Photo[len(msg.Photo)-1]
+		return domain.Content{
+			FileID:       photo.FileID,
+			FileUniqueID: photo.FileUniqueID,
+			Type:         domain.MediaPhoto,
+			SizeBytes:    int64(photo.FileSize),
+			Width:        photo.Width,
+			Height:       photo.Height,
+		}
 	case msg.Animation != nil:
-		return msg.Animation.FileUniqueID
+		return domain.Content{
+			FileID:       msg.Animation.FileID,
+			FileUniqueID: msg.Animation.FileUniqueID,
+			Type:         domain.MediaAnimation,
+			MimeType:     msg.Animation.MimeType,
+			SizeBytes:    int64(msg.Animation.FileSize),
+			DurationSec:  msg.Animation.Duration,
+			Width:        msg.Animation.Width,
+			Height:       msg.Animation.Height,
+		}
 	case msg.Sticker != nil:
-		return msg.Sticker.FileUniqueID
+		mediaType := domain.MediaStickerStatic
+		if msg.Sticker.IsAnimated {
+			mediaType = domain.MediaStickerAnimated
+		}
+
+		return domain.Content{
+			FileID:       msg.Sticker.FileID,
+			FileUniqueID: msg.Sticker.FileUniqueID,
+			Type:         mediaType,
+			SizeBytes:    int64(msg.Sticker.FileSize),
+			Width:        msg.Sticker.Width,
+			Height:       msg.Sticker.Height,
+		}
 	case msg.Video != nil:
-		return msg.Video.FileUniqueID
+		return domain.Content{
+			FileID:       msg.Video.FileID,
+			FileUniqueID: msg.Video.FileUniqueID,
+			Type:         domain.MediaVideo,
+			MimeType:     msg.Video.MimeType,
+			SizeBytes:    int64(msg.Video.FileSize),
+			DurationSec:  msg.Video.Duration,
+			Width:        msg.Video.Width,
+			Height:       msg.Video.Height,
+		}
 	}
 
-	return ""
+	return domain.Content{}
 }

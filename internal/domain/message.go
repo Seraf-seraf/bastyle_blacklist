@@ -7,6 +7,7 @@ type Message struct {
 	Command      string
 	FileUniqueID string
 	ReplyTo      *Message
+	Content      *Content
 }
 
 func (m Message) IsCommand() bool {

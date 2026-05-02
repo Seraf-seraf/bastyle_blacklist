@@ -1,6 +1,6 @@
 package ports
 
 type BlacklistStore interface {
-	Block(fileUniqueID string)
-	IsBlocked(fileUniqueID string) bool
+	Block(fileUniqueID string) error
+	IsBlocked(fileUniqueID string) (bool, error)
 }
