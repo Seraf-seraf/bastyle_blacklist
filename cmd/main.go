@@ -4,7 +4,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/blacklist"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/memory"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/policy"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -33,12 +34,12 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	workers := 5
-	blacklist.InitInstance(500)
+	blacklistStore := memory.NewBlacklistStore(500)
 	jobs := make(chan Job, 100)
 	defer close(jobs)
 
 	for i := 0; i < workers; i++ {
-		go worker(jobs, bot)
+		go worker(jobs, bot, blacklistStore)
 	}
 
 	for update := range updates {
@@ -46,7 +47,7 @@ func main() {
 	}
 }
 
-func worker(jobs <-chan Job, bot *tgbotapi.BotAPI) {
+func worker(jobs <-chan Job, bot *tgbotapi.BotAPI, blacklistStore ports.BlacklistStore) {
 	for job := range jobs {
 		msg := job.Update.Message
 		if msg == nil {
@@ -78,7 +79,7 @@ func worker(jobs <-chan Job, bot *tgbotapi.BotAPI) {
 
 				fileID := policy.FileUniqueID(target)
 				if fileID != "" {
-					blacklist.GetInstance().Block(fileID)
+					blacklistStore.Block(fileID)
 				}
 
 				_, err := bot.Request(
@@ -101,7 +102,7 @@ func worker(jobs <-chan Job, bot *tgbotapi.BotAPI) {
 				continue
 			}
 
-			if id := policy.FileUniqueID(target); id != "" && blacklist.GetInstance().IsBlocked(id) {
+			if id := policy.FileUniqueID(target); id != "" && blacklistStore.IsBlocked(id) {
 				_, err := bot.Request(
 					tgbotapi.NewDeleteMessage(target.Chat.ID, target.MessageID),
 				)
