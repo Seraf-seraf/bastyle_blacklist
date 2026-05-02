@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/memory"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
@@ -16,6 +20,9 @@ type Job struct {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	if err := godotenv.Load(); err != nil {
 		log.Panic("[ERROR]: failed to load .env")
 	}
@@ -31,6 +38,11 @@ func main() {
 	u.Timeout = 60
 
 	updates := bot.GetUpdatesChan(u)
+	go func() {
+		<-ctx.Done()
+		log.Println("Shutdown signal received")
+		bot.StopReceivingUpdates()
+	}()
 
 	workers := 5
 	blacklist := memory.NewBlacklistStore(500)
@@ -40,15 +52,23 @@ func main() {
 	service := moderation.NewService(blacklist, admin, actions)
 
 	jobs := make(chan Job, 100)
-	defer close(jobs)
+	var wg sync.WaitGroup
 
 	for i := 0; i < workers; i++ {
-		go worker(jobs, service)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker(jobs, service)
+		}()
 	}
 
 	for update := range updates {
 		jobs <- Job{Update: update}
 	}
+
+	close(jobs)
+	wg.Wait()
+	log.Println("Shutdown complete")
 }
 
 func worker(jobs <-chan Job, service *moderation.Service) {
