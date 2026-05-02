@@ -6,20 +6,20 @@ import (
 )
 
 type Service struct {
-	blacklist ports.BlacklistStore
-	admins    ports.AdminChecker
-	actions   ports.MessageActions
+	contentMatcher ports.ContentMatcher
+	admins         ports.AdminChecker
+	actions        ports.MessageActions
 }
 
 func NewService(
-	blacklist ports.BlacklistStore,
+	contentMatcher ports.ContentMatcher,
 	admins ports.AdminChecker,
 	actions ports.MessageActions,
 ) *Service {
 	return &Service{
-		blacklist: blacklist,
-		admins:    admins,
-		actions:   actions,
+		contentMatcher: contentMatcher,
+		admins:         admins,
+		actions:        actions,
 	}
 }
 
@@ -45,10 +45,8 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 			}
 
 			target := msg.ReplyTo
-
-			fileID := target.FileUniqueID
-			if fileID != "" {
-				if err := s.blacklist.Block(fileID); err != nil {
+			if target.Content != nil {
+				if err := s.contentMatcher.Block(*target.Content); err != nil {
 					return err
 				}
 			}
@@ -70,11 +68,11 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 			continue
 		}
 
-		if target.FileUniqueID == "" {
+		if target.Content == nil {
 			continue
 		}
 
-		blocked, err := s.blacklist.IsBlocked(target.FileUniqueID)
+		blocked, err := s.contentMatcher.IsBlocked(*target.Content)
 		if err != nil {
 			return err
 		}

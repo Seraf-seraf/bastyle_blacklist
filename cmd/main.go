@@ -8,7 +8,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/memory"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/exactmatcher"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -45,11 +45,11 @@ func main() {
 	}()
 
 	workers := 5
-	blacklist := memory.NewBlacklistStore(500)
+	exactMatcher := exactmatcher.NewExactMatcher(500)
 	actions := telegram.NewBotActions(bot)
 	admin := telegram.NewAdminChecker(bot)
 
-	service := moderation.NewService(blacklist, admin, actions)
+	service := moderation.NewService(exactMatcher, admin, actions)
 
 	jobs := make(chan Job, 100)
 	var wg sync.WaitGroup
