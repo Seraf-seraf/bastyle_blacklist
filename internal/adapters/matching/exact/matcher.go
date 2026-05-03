@@ -1,23 +1,24 @@
-package exactmatcher
+package exact
 
 import (
+	"context"
 	"sync"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
-type ExactMatcher struct {
+type Matcher struct {
 	mu      sync.RWMutex
 	blocked map[string]struct{}
 }
 
-func NewExactMatcher(buffer int) *ExactMatcher {
-	return &ExactMatcher{
+func NewMatcher(buffer int) *Matcher {
+	return &Matcher{
 		blocked: make(map[string]struct{}, buffer),
 	}
 }
 
-func (m *ExactMatcher) IsBlocked(content domain.Content) (bool, error) {
+func (m *Matcher) IsBlocked(_ context.Context, content domain.Content) (bool, error) {
 	if content.FileUniqueID == "" {
 		return false, nil
 	}
@@ -29,7 +30,7 @@ func (m *ExactMatcher) IsBlocked(content domain.Content) (bool, error) {
 	return ok, nil
 }
 
-func (m *ExactMatcher) Block(content domain.Content) error {
+func (m *Matcher) Block(_ context.Context, content domain.Content) error {
 	if content.FileUniqueID == "" {
 		return nil
 	}

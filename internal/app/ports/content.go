@@ -1,8 +1,16 @@
 package ports
 
-import "github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+import (
+	"context"
+
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+)
 
 type ContentMatcher interface {
-	Block(content domain.Content) error
-	IsBlocked(content domain.Content) (bool, error)
+	Block(ctx context.Context, content domain.Content) error
+	IsBlocked(ctx context.Context, content domain.Content) (bool, error)
+}
+
+type MediaDownloader interface {
+	Download(ctx context.Context, fileID string) ([]byte, error)
 }

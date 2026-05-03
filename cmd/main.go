@@ -8,7 +8,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/exactmatcher"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -45,11 +47,13 @@ func main() {
 	}()
 
 	workers := 5
-	exactMatcher := exactmatcher.NewExactMatcher(500)
+	exactMatcher := exact.NewMatcher(500)
+	imageHashMatcher := imagehash.NewMatcher(telegram.NewFileDownloader(bot), 8, 500)
+	contentMatcher := composite.NewMatcher(exactMatcher, imageHashMatcher)
 	actions := telegram.NewBotActions(bot)
 	admin := telegram.NewAdminChecker(bot)
 
-	service := moderation.NewService(exactMatcher, admin, actions)
+	service := moderation.NewService(contentMatcher, admin, actions)
 
 	jobs := make(chan Job, 100)
 	var wg sync.WaitGroup
@@ -58,7 +62,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker(jobs, service)
+			worker(ctx, jobs, service)
 		}()
 	}
 
@@ -71,7 +75,7 @@ func main() {
 	log.Println("Shutdown complete")
 }
 
-func worker(jobs <-chan Job, service *moderation.Service) {
+func worker(ctx context.Context, jobs <-chan Job, service *moderation.Service) {
 	for job := range jobs {
 		msg := job.Update.Message
 		if msg == nil {
@@ -79,7 +83,7 @@ func worker(jobs <-chan Job, service *moderation.Service) {
 		}
 
 		message := telegram.MessageFromTelegram(msg)
-		if err := service.HandleMessage(message); err != nil {
+		if err := service.HandleMessage(ctx, message); err != nil {
 			log.Printf("[ERROR]: %s", err)
 		}
 	}

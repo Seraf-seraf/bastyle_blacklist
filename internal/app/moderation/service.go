@@ -1,6 +1,8 @@
 package moderation
 
 import (
+	"context"
+
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
@@ -23,7 +25,7 @@ func NewService(
 	}
 }
 
-func (s *Service) HandleMessage(msg domain.Message) error {
+func (s *Service) HandleMessage(ctx context.Context, msg domain.Message) error {
 	if msg.IsCommand() {
 
 		switch msg.Command {
@@ -46,7 +48,7 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 
 			target := msg.ReplyTo
 			if target.Content != nil {
-				if err := s.contentMatcher.Block(*target.Content); err != nil {
+				if err := s.contentMatcher.Block(ctx, *target.Content); err != nil {
 					return err
 				}
 			}
@@ -72,7 +74,7 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 			continue
 		}
 
-		blocked, err := s.contentMatcher.IsBlocked(*target.Content)
+		blocked, err := s.contentMatcher.IsBlocked(ctx, *target.Content)
 		if err != nil {
 			return err
 		}
