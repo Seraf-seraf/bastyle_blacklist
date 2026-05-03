@@ -11,6 +11,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -48,7 +49,9 @@ func main() {
 
 	workers := 5
 	exactMatcher := exact.NewMatcher(500)
-	imageHashMatcher := imagehash.NewMatcher(telegram.NewFileDownloader(bot), 8, 500)
+	mediaDownloader := telegram.NewFileDownloader(bot)
+	mediaExtractor := media.NewExtractor()
+	imageHashMatcher := imagehash.NewMatcher(mediaDownloader, mediaExtractor, 8, 500)
 	contentMatcher := composite.NewMatcher(exactMatcher, imageHashMatcher)
 	actions := telegram.NewBotActions(bot)
 	admin := telegram.NewAdminChecker(bot)

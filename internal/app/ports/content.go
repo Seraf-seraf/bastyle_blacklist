@@ -12,5 +12,9 @@ type ContentMatcher interface {
 }
 
 type MediaDownloader interface {
-	Download(ctx context.Context, fileID string) ([]byte, error)
+	Download(ctx context.Context, content domain.Content) (domain.MediaFile, error)
+}
+
+type MediaExtractor interface {
+	Extract(ctx context.Context, media domain.MediaFile, plan domain.MediaExtractionPlan) (domain.ExtractedMedia, error)
 }

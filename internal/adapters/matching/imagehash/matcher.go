@@ -1,31 +1,28 @@
 package imagehash
 
 import (
-	"bytes"
 	"context"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	"errors"
 	"sync"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/corona10/goimagehash"
-	_ "golang.org/x/image/webp"
 )
 
 type Matcher struct {
 	downloader ports.MediaDownloader
+	extractor  ports.MediaExtractor
 	threshold  int
 
 	mu     sync.RWMutex
 	hashes []*goimagehash.ImageHash
 }
 
-func NewMatcher(downloader ports.MediaDownloader, threshold int, buffer int) *Matcher {
+func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) *Matcher {
 	return &Matcher{
 		downloader: downloader,
+		extractor:  extractor,
 		threshold:  threshold,
 		hashes:     make([]*goimagehash.ImageHash, 0, buffer),
 	}
@@ -82,17 +79,23 @@ func (m *Matcher) supports(content domain.Content) bool {
 }
 
 func (m *Matcher) hashContent(ctx context.Context, content domain.Content) (*goimagehash.ImageHash, error) {
-	data, err := m.downloader.Download(ctx, content.FileID)
+	media, err := m.downloader.Download(ctx, content)
 	if err != nil {
 		return nil, err
 	}
 
-	img, _, err := image.Decode(bytes.NewReader(data))
+	extracted, err := m.extractor.Extract(ctx, media, domain.MediaExtractionPlan{
+		MaxFrames: 1,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	hash, err := goimagehash.PerceptionHash(img)
+	if len(extracted.Frames) == 0 {
+		return nil, errors.New("media extractor returned no frames")
+	}
+
+	hash, err := goimagehash.PerceptionHash(extracted.Frames[0].Image)
 	if err != nil {
 		return nil, err
 	}

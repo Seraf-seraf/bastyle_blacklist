@@ -2,10 +2,11 @@ package telegram
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -21,31 +22,34 @@ func NewFileDownloader(bot *tgbotapi.BotAPI) *FileDownloader {
 	}
 }
 
-func (d *FileDownloader) Download(ctx context.Context, fileID string) ([]byte, error) {
-	url, err := d.bot.GetFileDirectURL(fileID)
+func (d *FileDownloader) Download(ctx context.Context, content domain.Content) (domain.MediaFile, error) {
+	url, err := d.bot.GetFileDirectURL(content.FileID)
 	if err != nil {
-		return nil, fmt.Errorf("get file url: %w", err)
+		return domain.MediaFile{}, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create download request: %w", err)
+		return domain.MediaFile{}, err
 	}
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("download file: %w", err)
+		return domain.MediaFile{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("download file: unexpected status %s", resp.Status)
+		return domain.MediaFile{}, errors.New("download file: unexpected status")
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read downloaded file: %w", err)
+		return domain.MediaFile{}, err
 	}
 
-	return data, nil
+	return domain.MediaFile{
+		Content: content,
+		Data:    data,
+	}, nil
 }
