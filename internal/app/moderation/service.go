@@ -47,13 +47,20 @@ func (s *Service) HandleMessage(ctx context.Context, msg domain.Message) error {
 			}
 
 			target := msg.ReplyTo
-			if target.Content != nil {
-				if err := s.contentMatcher.Block(ctx, *target.Content); err != nil {
-					return err
-				}
+			if target.Content == nil {
+				_ = s.actions.SendMessage(msg.ChatID, "Текстовые сообщения не баним")
+				return nil
+			}
+
+			if err := s.contentMatcher.Block(ctx, *target.Content); err != nil {
+				return err
 			}
 
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
+				return err
+			}
+
+			if err := s.actions.DeleteMessage(msg.ChatID, msg.ID); err != nil {
 				return err
 			}
 		}
