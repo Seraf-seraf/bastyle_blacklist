@@ -51,7 +51,19 @@ func main() {
 	exactMatcher := exact.NewMatcher(500)
 	mediaDownloader := telegram.NewFileDownloader(bot)
 	mediaExtractor := media.NewExtractor()
-	imageHashMatcher := imagehash.NewMatcher(mediaDownloader, mediaExtractor, 8, 500)
+	imageHashDBPath := os.Getenv("IMAGE_HASH_DB_PATH")
+	if imageHashDBPath == "" {
+		log.Panic("IMAGE_HASH_DB_PATH is required")
+	}
+	imageHashMatcher, err := imagehash.NewSQLiteMatcher(ctx, mediaDownloader, mediaExtractor, 8, 500, imageHashDBPath)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer func() {
+		if err := imageHashMatcher.Close(); err != nil {
+			log.Printf("[ERROR]: %s", err)
+		}
+	}()
 	contentMatcher := composite.NewMatcher(exactMatcher, imageHashMatcher)
 	actions := telegram.NewBotActions(bot)
 	admin := telegram.NewAdminChecker(bot)

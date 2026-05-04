@@ -3,6 +3,7 @@ package media
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -14,6 +15,8 @@ import (
 
 type Extractor struct{}
 
+const maxImagePixels = 20_000_000
+
 func NewExtractor() *Extractor {
 	return &Extractor{}
 }
@@ -23,7 +26,23 @@ func (e *Extractor) Extract(ctx context.Context, media domain.MediaFile, plan do
 		return domain.ExtractedMedia{}, err
 	}
 
-	img, _, err := image.Decode(bytes.NewReader(media.Data))
+	reader := bytes.NewReader(media.Data)
+	config, _, err := image.DecodeConfig(reader)
+	if err != nil {
+		return domain.ExtractedMedia{}, err
+	}
+	if config.Width <= 0 || config.Height <= 0 {
+		return domain.ExtractedMedia{}, errors.New("extract media: invalid image dimensions")
+	}
+	if config.Width > maxImagePixels/config.Height {
+		return domain.ExtractedMedia{}, errors.New("extract media: image dimensions are too large")
+	}
+
+	if _, err := reader.Seek(0, 0); err != nil {
+		return domain.ExtractedMedia{}, err
+	}
+
+	img, _, err := image.Decode(reader)
 	if err != nil {
 		return domain.ExtractedMedia{}, err
 	}
