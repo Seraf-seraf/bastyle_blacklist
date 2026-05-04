@@ -18,10 +18,15 @@ Telegram-бот для модерации медиа в чате. Админис
 
 ## Настройка
 
-Создайте файл `.env` в корне проекта:
+Заполните файл `configs/config.yaml`:
 
-```env
-TOKEN="your-telegram-bot-token"
+```yaml
+telegram:
+  token: "your-telegram-bot-token"
+
+matching:
+  image_hash:
+    db_path: "bastyle.sqlite"
 ```
 
 Токен можно получить у `@BotFather` в Telegram.
@@ -31,14 +36,14 @@ TOKEN="your-telegram-bot-token"
 Локально:
 
 ```bash
-go run ./cmd/main.go
+go run ./cmd/main.go -config configs/config.yaml
 ```
 
 Через Docker:
 
 ```bash
 docker build -f build/Dockerfile -t bastyle-blacklist .
-docker run --env-file .env bastyle-blacklist
+docker run bastyle-blacklist
 ```
 
 ## Требования

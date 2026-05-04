@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -14,8 +15,8 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/joho/godotenv"
 )
 
 type Job struct {
@@ -26,11 +27,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := godotenv.Load(); err != nil {
-		log.Panic("[ERROR]: failed to load .env")
+	configPath := flag.String("config", "configs/config.yaml", "path to yaml config")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Panic(err)
 	}
 
-	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
+	bot, err := tgbotapi.NewBotAPI(cfg.Telegram.Token)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -38,7 +43,7 @@ func main() {
 	log.Printf("Authorized as %s", bot.Self.UserName)
 
 	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+	u.Timeout = cfg.Telegram.UpdateTimeoutSeconds
 
 	updates := bot.GetUpdatesChan(u)
 	go func() {
@@ -47,15 +52,17 @@ func main() {
 		bot.StopReceivingUpdates()
 	}()
 
-	workers := 5
-	exactMatcher := exact.NewMatcher(500)
+	exactMatcher := exact.NewMatcher(cfg.Matching.Exact.Buffer)
 	mediaDownloader := telegram.NewFileDownloader(bot)
 	mediaExtractor := media.NewExtractor()
-	imageHashDBPath := os.Getenv("IMAGE_HASH_DB_PATH")
-	if imageHashDBPath == "" {
-		log.Panic("IMAGE_HASH_DB_PATH is required")
-	}
-	imageHashMatcher, err := imagehash.NewSQLiteMatcher(ctx, mediaDownloader, mediaExtractor, 12, 500, imageHashDBPath)
+	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
+		ctx,
+		mediaDownloader,
+		mediaExtractor,
+		cfg.Matching.ImageHash.Threshold,
+		cfg.Matching.ImageHash.Buffer,
+		cfg.Matching.ImageHash.DBPath,
+	)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -70,10 +77,10 @@ func main() {
 
 	service := moderation.NewService(contentMatcher, admin, actions)
 
-	jobs := make(chan Job, 100)
+	jobs := make(chan Job, cfg.JobsBuffer)
 	var wg sync.WaitGroup
 
-	for i := 0; i < workers; i++ {
+	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

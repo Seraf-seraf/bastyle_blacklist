@@ -1,0 +1,14 @@
+telegram:
+  token: ""
+  update_timeout_seconds: 60
+
+workers: 5
+jobs_buffer: 100
+
+matching:
+  exact:
+    buffer: 500
+  image_hash:
+    db_path: "bastyle.sqlite"
+    threshold: 12
+    buffer: 500
