@@ -55,7 +55,7 @@ func main() {
 	if imageHashDBPath == "" {
 		log.Panic("IMAGE_HASH_DB_PATH is required")
 	}
-	imageHashMatcher, err := imagehash.NewSQLiteMatcher(ctx, mediaDownloader, mediaExtractor, 8, 500, imageHashDBPath)
+	imageHashMatcher, err := imagehash.NewSQLiteMatcher(ctx, mediaDownloader, mediaExtractor, 12, 500, imageHashDBPath)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -31,7 +31,7 @@ func (e fakeExtractor) Extract(_ context.Context, media domain.MediaFile, _ doma
 	}, nil
 }
 
-func TestMatcherSkipsLowInformationWhiteImage(t *testing.T) {
+func TestMatcherBlocksSameWhiteImageBackgroundWithDifferentFileID(t *testing.T) {
 	ctx := context.Background()
 	blockedContent := domain.Content{
 		FileID:       "blocked-white",
@@ -60,8 +60,8 @@ func TestMatcherSkipsLowInformationWhiteImage(t *testing.T) {
 		t.Fatalf("check candidate white image: %v", err)
 	}
 
-	if blocked {
-		t.Fatal("expected low-information white image to be skipped by perceptual hash")
+	if !blocked {
+		t.Fatal("expected white image with another file id to be blocked by perceptual hash")
 	}
 }
 
