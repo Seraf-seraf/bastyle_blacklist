@@ -32,12 +32,15 @@ func (d *FileDownloader) Download(ctx context.Context, content domain.Content) (
 		return domain.MediaFile{}, errors.New("download file: media is too large")
 	}
 
-	url, err := d.bot.GetFileDirectURL(content.FileID)
+	file, err := d.bot.GetFile(tgbotapi.FileConfig{FileID: content.FileID})
 	if err != nil {
 		return domain.MediaFile{}, err
 	}
+	if file.FileSize > maxDownloadBytes {
+		return domain.MediaFile{}, errors.New("download file: media is too large")
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, file.Link(d.bot.Token), nil)
 	if err != nil {
 		return domain.MediaFile{}, err
 	}
@@ -66,7 +69,8 @@ func (d *FileDownloader) Download(ctx context.Context, content domain.Content) (
 	}
 
 	return domain.MediaFile{
-		Content: content,
-		Data:    data,
+		Content:  content,
+		FilePath: file.FilePath,
+		Data:     data,
 	}, nil
 }

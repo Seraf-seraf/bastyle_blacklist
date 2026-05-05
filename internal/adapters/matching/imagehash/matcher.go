@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"image"
+	"path/filepath"
+	"strings"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
@@ -115,6 +117,9 @@ func (m *Matcher) hashContent(ctx context.Context, content domain.Content) ([]ui
 	if err != nil {
 		return nil, err
 	}
+	if isVideoFile(media.FilePath) {
+		return nil, nil
+	}
 
 	extracted, err := m.extractor.Extract(ctx, media, domain.MediaExtractionPlan{
 		MaxFrames: 1,
@@ -133,6 +138,15 @@ func (m *Matcher) hashContent(ctx context.Context, content domain.Content) ([]ui
 	}
 
 	return hashes, nil
+}
+
+func isVideoFile(filePath string) bool {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".mp4", ".webm", ".mov", ".mkv":
+		return true
+	default:
+		return false
+	}
 }
 
 func perceptionHashVariants(img image.Image) ([]uint64, error) {

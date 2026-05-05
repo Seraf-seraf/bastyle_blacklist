@@ -67,17 +67,6 @@ func contentFromTelegram(msg *tgbotapi.Message) domain.Content {
 			Width:        msg.Sticker.Width,
 			Height:       msg.Sticker.Height,
 		}
-	case msg.Video != nil:
-		return domain.Content{
-			FileID:       msg.Video.FileID,
-			FileUniqueID: msg.Video.FileUniqueID,
-			Type:         domain.MediaVideo,
-			MimeType:     msg.Video.MimeType,
-			SizeBytes:    int64(msg.Video.FileSize),
-			DurationSec:  msg.Video.Duration,
-			Width:        msg.Video.Width,
-			Height:       msg.Video.Height,
-		}
 	}
 
 	return domain.Content{}

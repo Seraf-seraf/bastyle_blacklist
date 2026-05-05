@@ -3,8 +3,9 @@ package domain
 import "image"
 
 type MediaFile struct {
-	Content Content
-	Data    []byte
+	Content  Content
+	FilePath string
+	Data     []byte
 }
 
 type MediaExtractionPlan struct {
