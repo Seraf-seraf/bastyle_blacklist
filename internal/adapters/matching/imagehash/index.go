@@ -62,7 +62,7 @@ func (i *LinearIndex) Add(hash StoredImageHash) {
 
 // AddMany массово добавляет hashes в индекс и пропускает дубли.
 //
-// Метод используется при старте, когда SQLiteStore.Load возвращает persisted
+// Метод используется при старте, когда sqlite store возвращает persisted
 // записи. В отличие от многократного Add, он строит set один раз.
 func (i *LinearIndex) AddMany(hashes []StoredImageHash) {
 	i.mu.Lock()

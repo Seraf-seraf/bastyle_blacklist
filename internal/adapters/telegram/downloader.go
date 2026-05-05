@@ -7,23 +7,24 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 const maxDownloadBytes = 20 << 20
 
-type FileDownloader struct {
+type fileDownloader struct {
 	bot        *tgbotapi.BotAPI
 	httpClient *http.Client
 }
 
-func NewFileDownloader(bot *tgbotapi.BotAPI) (*FileDownloader, error) {
+func NewFileDownloader(bot *tgbotapi.BotAPI) (ports.MediaDownloader, error) {
 	if bot == nil {
 		return nil, errors.New("telegram file downloader bot is not configured")
 	}
 
-	return &FileDownloader{
+	return &fileDownloader{
 		bot: bot,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -31,7 +32,7 @@ func NewFileDownloader(bot *tgbotapi.BotAPI) (*FileDownloader, error) {
 	}, nil
 }
 
-func (d *FileDownloader) Download(ctx context.Context, content domain.Content) (domain.MediaFile, error) {
+func (d *fileDownloader) Download(ctx context.Context, content domain.Content) (domain.MediaFile, error) {
 	if content.SizeBytes > maxDownloadBytes {
 		return domain.MediaFile{}, errors.New("download file: media is too large")
 	}

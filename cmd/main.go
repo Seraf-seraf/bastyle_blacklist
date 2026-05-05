@@ -16,6 +16,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -115,7 +116,11 @@ func main() {
 	log.Println("Shutdown complete")
 }
 
-func worker(ctx context.Context, jobs <-chan Job, service *moderation.Service) {
+type moderationService interface {
+	HandleMessage(ctx context.Context, msg domain.Message) error
+}
+
+func worker(ctx context.Context, jobs <-chan Job, service moderationService) {
 	for job := range jobs {
 		msg := job.Update.Message
 		if msg == nil {

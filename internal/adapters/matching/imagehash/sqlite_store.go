@@ -10,11 +10,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type SQLiteStore struct {
+type sqliteStore struct {
 	db *sql.DB
 }
 
-func OpenSQLiteStore(ctx context.Context, path string) (*SQLiteStore, error) {
+func OpenSQLiteStore(ctx context.Context, path string) (*sqliteStore, error) {
 	if path == "" {
 		return nil, errors.New("sqlite path is empty")
 	}
@@ -25,7 +25,7 @@ func OpenSQLiteStore(ctx context.Context, path string) (*SQLiteStore, error) {
 	}
 	db.SetMaxOpenConns(1)
 
-	store := &SQLiteStore{
+	store := &sqliteStore{
 		db: db,
 	}
 
@@ -37,11 +37,11 @@ func OpenSQLiteStore(ctx context.Context, path string) (*SQLiteStore, error) {
 	return store, nil
 }
 
-func (s *SQLiteStore) Close() error {
+func (s *sqliteStore) close() error {
 	return s.db.Close()
 }
 
-func (s *SQLiteStore) Load(ctx context.Context) ([]StoredImageHash, error) {
+func (s *sqliteStore) load(ctx context.Context) ([]StoredImageHash, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT bi.id, bi.file_unique_id, bi.media_type, bih.hash_uint64
 FROM blocked_image bi
@@ -99,7 +99,7 @@ ORDER BY bi.id, bih.variant
 	return hashes, nil
 }
 
-func (s *SQLiteStore) Insert(ctx context.Context, hash StoredImageHash) (int64, error) {
+func (s *sqliteStore) insert(ctx context.Context, hash StoredImageHash) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -144,7 +144,7 @@ VALUES (?, ?, ?)
 	return id, nil
 }
 
-func (s *SQLiteStore) ensureSchema(ctx context.Context) error {
+func (s *sqliteStore) ensureSchema(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -195,7 +195,7 @@ WHERE hash_signature <> '';
 	return err
 }
 
-func (s *SQLiteStore) hasColumn(ctx context.Context, table string, column string) (bool, error) {
+func (s *sqliteStore) hasColumn(ctx context.Context, table string, column string) (bool, error) {
 	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
 	if err != nil {
 		return false, err

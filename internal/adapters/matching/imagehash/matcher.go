@@ -19,7 +19,7 @@ type matcher struct {
 	threshold  int
 
 	index *LinearIndex
-	store *SQLiteStore
+	store *sqliteStore
 }
 
 func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) (*matcher, error) {
@@ -48,15 +48,15 @@ func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, ext
 		return nil, err
 	}
 
-	storedHashes, err := store.Load(ctx)
+	storedHashes, err := store.load(ctx)
 	if err != nil {
-		_ = store.Close()
+		_ = store.close()
 		return nil, err
 	}
 
 	matcher, err := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes))
 	if err != nil {
-		_ = store.Close()
+		_ = store.close()
 		return nil, err
 	}
 	matcher.store = store
@@ -87,7 +87,7 @@ func (m *matcher) Close() error {
 		return nil
 	}
 
-	return m.store.Close()
+	return m.store.close()
 }
 
 func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
@@ -128,7 +128,7 @@ func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 		Hashes:       hashes,
 	}
 
-	id, err := m.store.Insert(ctx, storedHash)
+	id, err := m.store.insert(ctx, storedHash)
 	if err != nil {
 		return err
 	}

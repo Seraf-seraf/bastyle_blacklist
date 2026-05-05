@@ -8,7 +8,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
-type Service struct {
+type service struct {
 	contentMatcher ports.ContentMatcher
 	admins         ports.AdminChecker
 	actions        ports.MessageActions
@@ -18,7 +18,7 @@ func NewService(
 	contentMatcher ports.ContentMatcher,
 	admins ports.AdminChecker,
 	actions ports.MessageActions,
-) (*Service, error) {
+) (*service, error) {
 	if contentMatcher == nil {
 		return nil, errors.New("moderation service content matcher is not configured")
 	}
@@ -29,14 +29,14 @@ func NewService(
 		return nil, errors.New("moderation service message actions are not configured")
 	}
 
-	return &Service{
+	return &service{
 		contentMatcher: contentMatcher,
 		admins:         admins,
 		actions:        actions,
 	}, nil
 }
 
-func (s *Service) HandleMessage(ctx context.Context, msg domain.Message) error {
+func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 	if msg.IsCommand() {
 
 		switch msg.Command {

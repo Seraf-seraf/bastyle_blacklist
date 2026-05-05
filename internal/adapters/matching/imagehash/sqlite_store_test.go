@@ -16,12 +16,12 @@ func TestSQLiteStorePersistsImageHashes(t *testing.T) {
 		t.Fatalf("open sqlite store: %v", err)
 	}
 	defer func() {
-		if err := store.Close(); err != nil {
+		if err := store.close(); err != nil {
 			t.Fatalf("close sqlite store: %v", err)
 		}
 	}()
 
-	id, err := store.Insert(ctx, StoredImageHash{
+	id, err := store.insert(ctx, StoredImageHash{
 		FileUniqueID: "file-unique-id",
 		MediaType:    domain.MediaPhoto,
 		Hashes: []uint64{
@@ -35,7 +35,7 @@ func TestSQLiteStorePersistsImageHashes(t *testing.T) {
 		t.Fatalf("insert image hash: %v", err)
 	}
 
-	hashes, err := store.Load(ctx)
+	hashes, err := store.load(ctx)
 	if err != nil {
 		t.Fatalf("load image hashes: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestSQLiteStoreDeduplicatesImageHashes(t *testing.T) {
 		t.Fatalf("open sqlite store: %v", err)
 	}
 	defer func() {
-		if err := store.Close(); err != nil {
+		if err := store.close(); err != nil {
 			t.Fatalf("close sqlite store: %v", err)
 		}
 	}()
@@ -82,12 +82,12 @@ func TestSQLiteStoreDeduplicatesImageHashes(t *testing.T) {
 		Hashes:       []uint64{10, 20, 30, 40},
 	}
 
-	firstID, err := store.Insert(ctx, hash)
+	firstID, err := store.insert(ctx, hash)
 	if err != nil {
 		t.Fatalf("insert image hash: %v", err)
 	}
 
-	secondID, err := store.Insert(ctx, hash)
+	secondID, err := store.insert(ctx, hash)
 	if err != nil {
 		t.Fatalf("insert duplicate image hash: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestSQLiteStoreDeduplicatesImageHashes(t *testing.T) {
 		t.Fatalf("expected duplicate insert to return id %d, got %d", firstID, secondID)
 	}
 
-	hashes, err := store.Load(ctx)
+	hashes, err := store.load(ctx)
 	if err != nil {
 		t.Fatalf("load image hashes: %v", err)
 	}
