@@ -45,10 +45,16 @@ type ImageHash struct {
 }
 
 type VideoLike struct {
+	Enabled                 bool     `yaml:"enabled"`
 	MaxAnimationDuration    Duration `yaml:"max_animation_duration"`
 	MaxVideoStickerDuration Duration `yaml:"max_video_sticker_duration"`
 	MaxAnimationSize        ByteSize `yaml:"max_animation_size"`
 	MaxVideoStickerSize     ByteSize `yaml:"max_video_sticker_size"`
+	DBPath                  string   `yaml:"db_path"`
+	Threshold               int      `yaml:"threshold"`
+	Buffer                  int      `yaml:"buffer"`
+	MinMatchedFrames        int      `yaml:"min_matched_frames"`
+	MinMatchedRatio         float64  `yaml:"min_matched_ratio"`
 	MaxFrames               int      `yaml:"max_frames"`
 	TargetWidth             int      `yaml:"target_width"`
 	TargetHeight            int      `yaml:"target_height"`
@@ -136,10 +142,16 @@ func defaultConfig() Config {
 				Buffer:    500,
 			},
 			VideoLike: VideoLike{
+				Enabled:                 true,
 				MaxAnimationDuration:    Duration(10 * time.Second),
 				MaxVideoStickerDuration: Duration(3 * time.Second),
 				MaxAnimationSize:        ByteSize(20 << 20),
 				MaxVideoStickerSize:     ByteSize(256 << 10),
+				DBPath:                  "bastyle.sqlite",
+				Threshold:               12,
+				Buffer:                  500,
+				MinMatchedFrames:        2,
+				MinMatchedRatio:         0.4,
 				MaxFrames:               10,
 				TargetWidth:             320,
 				TargetHeight:            320,
@@ -175,6 +187,9 @@ func (c Config) validate() error {
 	if c.Matching.ImageHash.Buffer <= 0 {
 		return errors.New("image hash buffer must be positive")
 	}
+	if !c.Matching.VideoLike.Enabled {
+		return nil
+	}
 	if c.Matching.VideoLike.MaxAnimationDuration.Value() <= 0 {
 		return errors.New("video like max animation duration must be positive")
 	}
@@ -186,6 +201,21 @@ func (c Config) validate() error {
 	}
 	if c.Matching.VideoLike.MaxVideoStickerSize.Bytes() <= 0 {
 		return errors.New("video like max video sticker size must be positive")
+	}
+	if c.Matching.VideoLike.DBPath == "" {
+		return errors.New("video like db path is required")
+	}
+	if c.Matching.VideoLike.Threshold < 0 {
+		return errors.New("video like threshold must not be negative")
+	}
+	if c.Matching.VideoLike.Buffer <= 0 {
+		return errors.New("video like buffer must be positive")
+	}
+	if c.Matching.VideoLike.MinMatchedFrames <= 0 {
+		return errors.New("video like min matched frames must be positive")
+	}
+	if c.Matching.VideoLike.MinMatchedRatio <= 0 || c.Matching.VideoLike.MinMatchedRatio > 1 {
+		return errors.New("video like min matched ratio must be between 0 and 1")
 	}
 	if c.Matching.VideoLike.MaxFrames <= 0 {
 		return errors.New("video like max frames must be positive")

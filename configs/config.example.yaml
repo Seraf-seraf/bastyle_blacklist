@@ -13,10 +13,16 @@ matching:
     threshold: 12
     buffer: 500
   video_like:
+    enabled: true
     max_animation_duration: 10s
     max_video_sticker_duration: 3s
     max_animation_size: 20MiB
     max_video_sticker_size: 256KiB
+    db_path: "bastyle.sqlite"
+    threshold: 12
+    buffer: 500
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
     max_frames: 10
     target_width: 320
     target_height: 320

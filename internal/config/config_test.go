@@ -22,10 +22,16 @@ matching:
     threshold: 8
     buffer: 40
   video_like:
+    enabled: true
     max_animation_duration: 9s
     max_video_sticker_duration: 3s
     max_animation_size: 1MB
     max_video_sticker_size: 200KB
+    db_path: "video-like.sqlite"
+    threshold: 9
+    buffer: 50
+    min_matched_frames: 3
+    min_matched_ratio: 0.5
     max_frames: 8
     target_width: 256
     target_height: 256
@@ -65,6 +71,9 @@ matching:
 	if cfg.Matching.VideoLike.MaxAnimationDuration.Value() != 9*time.Second {
 		t.Fatalf("unexpected max animation duration: %s", cfg.Matching.VideoLike.MaxAnimationDuration.Value())
 	}
+	if !cfg.Matching.VideoLike.Enabled {
+		t.Fatal("expected video like matcher to be enabled")
+	}
 	if cfg.Matching.VideoLike.MaxVideoStickerDuration.Value() != 3*time.Second {
 		t.Fatalf("unexpected max video sticker duration: %s", cfg.Matching.VideoLike.MaxVideoStickerDuration.Value())
 	}
@@ -73,6 +82,21 @@ matching:
 	}
 	if cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes() != 200000 {
 		t.Fatalf("unexpected max video sticker size: %d", cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.DBPath != "video-like.sqlite" {
+		t.Fatalf("unexpected video like db path: %q", cfg.Matching.VideoLike.DBPath)
+	}
+	if cfg.Matching.VideoLike.Threshold != 9 {
+		t.Fatalf("unexpected video like threshold: %d", cfg.Matching.VideoLike.Threshold)
+	}
+	if cfg.Matching.VideoLike.Buffer != 50 {
+		t.Fatalf("unexpected video like buffer: %d", cfg.Matching.VideoLike.Buffer)
+	}
+	if cfg.Matching.VideoLike.MinMatchedFrames != 3 {
+		t.Fatalf("unexpected min matched frames: %d", cfg.Matching.VideoLike.MinMatchedFrames)
+	}
+	if cfg.Matching.VideoLike.MinMatchedRatio != 0.5 {
+		t.Fatalf("unexpected min matched ratio: %f", cfg.Matching.VideoLike.MinMatchedRatio)
 	}
 	if cfg.Matching.VideoLike.MaxFrames != 8 {
 		t.Fatalf("unexpected max frames: %d", cfg.Matching.VideoLike.MaxFrames)
@@ -117,6 +141,9 @@ matching:
 	if cfg.Matching.VideoLike.MaxAnimationDuration.Value() != 10*time.Second {
 		t.Fatalf("unexpected default max animation duration: %s", cfg.Matching.VideoLike.MaxAnimationDuration.Value())
 	}
+	if !cfg.Matching.VideoLike.Enabled {
+		t.Fatal("expected default video like matcher to be enabled")
+	}
 	if cfg.Matching.VideoLike.MaxVideoStickerDuration.Value() != 3*time.Second {
 		t.Fatalf("unexpected default max video sticker duration: %s", cfg.Matching.VideoLike.MaxVideoStickerDuration.Value())
 	}
@@ -125,6 +152,21 @@ matching:
 	}
 	if cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes() != 256<<10 {
 		t.Fatalf("unexpected default max video sticker size: %d", cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.DBPath != "bastyle.sqlite" {
+		t.Fatalf("unexpected default video like db path: %q", cfg.Matching.VideoLike.DBPath)
+	}
+	if cfg.Matching.VideoLike.Threshold != 12 {
+		t.Fatalf("unexpected default video like threshold: %d", cfg.Matching.VideoLike.Threshold)
+	}
+	if cfg.Matching.VideoLike.Buffer != 500 {
+		t.Fatalf("unexpected default video like buffer: %d", cfg.Matching.VideoLike.Buffer)
+	}
+	if cfg.Matching.VideoLike.MinMatchedFrames != 2 {
+		t.Fatalf("unexpected default min matched frames: %d", cfg.Matching.VideoLike.MinMatchedFrames)
+	}
+	if cfg.Matching.VideoLike.MinMatchedRatio != 0.4 {
+		t.Fatalf("unexpected default min matched ratio: %f", cfg.Matching.VideoLike.MinMatchedRatio)
 	}
 	if cfg.Matching.VideoLike.MaxFrames != 10 {
 		t.Fatalf("unexpected default max frames: %d", cfg.Matching.VideoLike.MaxFrames)
@@ -240,6 +282,24 @@ matching:
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestLoadAllowsInvalidDisabledVideoLikeConfig(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
+  video_like:
+    enabled: false
+    ffmpeg_binary: ""
+`)
+
+	_, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

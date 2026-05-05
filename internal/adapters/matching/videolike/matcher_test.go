@@ -3,6 +3,9 @@ package videolike
 import (
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -29,8 +32,32 @@ func (d *fakeDownloader) Download(_ context.Context, content domain.Content) (do
 	}, nil
 }
 
-func TestSupportsAcceptsAnimationWithoutDownload(t *testing.T) {
-	downloader := &fakeDownloader{}
+type fakeExtractor struct {
+	extracted domain.ExtractedMedia
+	err       error
+	calls     int
+	plans     []domain.MediaExtractionPlan
+}
+
+func (e *fakeExtractor) Extract(_ context.Context, _ domain.MediaFile, plan domain.MediaExtractionPlan) (domain.ExtractedMedia, error) {
+	e.calls++
+	e.plans = append(e.plans, plan)
+	if e.err != nil {
+		return domain.ExtractedMedia{}, e.err
+	}
+
+	return e.extracted, nil
+}
+
+func TestSupportsAcceptsAnimation(t *testing.T) {
+	downloader := &fakeDownloader{
+		filePaths: map[string]string{
+			"animation-file": "animations/file.mp4",
+		},
+		data: map[string][]byte{
+			"animation-file": []byte("animation"),
+		},
+	}
 	matcher := newTestMatcher(t, downloader)
 
 	supported, err := matcher.supports(context.Background(), domain.Content{
@@ -44,8 +71,8 @@ func TestSupportsAcceptsAnimationWithoutDownload(t *testing.T) {
 	if !supported {
 		t.Fatal("expected animation to be supported")
 	}
-	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+	if downloader.calls != 1 {
+		t.Fatalf("download calls = %d, want 1", downloader.calls)
 	}
 }
 
@@ -272,16 +299,197 @@ func TestSupportsRejectsVideoStickerOverDownloadedSizeLimit(t *testing.T) {
 }
 
 func TestNewMatcherRejectsNilDownloader(t *testing.T) {
-	_, err := NewMatcher(nil, defaultTestLimits())
+	_, err := NewMatcher(nil, &fakeExtractor{}, 8, 1, defaultTestPlan(), defaultTestLimits(), DefaultMatchRule())
 	if err == nil {
 		t.Fatal("expected nil downloader to be rejected")
 	}
 }
 
 func TestNewMatcherRejectsInvalidLimits(t *testing.T) {
-	_, err := NewMatcher(&fakeDownloader{}, Limits{})
+	_, err := NewMatcher(&fakeDownloader{}, &fakeExtractor{}, 8, 1, defaultTestPlan(), Limits{}, DefaultMatchRule())
 	if err == nil {
 		t.Fatal("expected invalid limits to be rejected")
+	}
+}
+
+func TestMatcherBlockRequiresStore(t *testing.T) {
+	matcher := newTestMatcher(t, &fakeDownloader{
+		filePaths: map[string]string{
+			"animation-file": "animations/file.mp4",
+		},
+		data: map[string][]byte{
+			"animation-file": []byte("animation"),
+		},
+	})
+
+	err := matcher.Block(context.Background(), domain.Content{
+		FileID:       "animation-file",
+		FileUniqueID: "animation-unique",
+		Type:         domain.MediaAnimation,
+	})
+	if err == nil {
+		t.Fatal("expected missing store error")
+	}
+}
+
+func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
+	ctx := context.Background()
+	downloader := &fakeDownloader{
+		filePaths: map[string]string{
+			"blocked-file": "animations/blocked.mp4",
+			"query-file":   "animations/query.mp4",
+		},
+		data: map[string][]byte{
+			"blocked-file": []byte("blocked"),
+			"query-file":   []byte("query"),
+		},
+	}
+	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
+	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
+
+	err := matcher.Block(ctx, domain.Content{
+		FileID:       "blocked-file",
+		FileUniqueID: "blocked-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  3,
+		SizeBytes:    7,
+	})
+	if err != nil {
+		t.Fatalf("block animation: %v", err)
+	}
+
+	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+		FileID:       "query-file",
+		FileUniqueID: "query-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  3,
+		SizeBytes:    5,
+	})
+	if err != nil {
+		t.Fatalf("is blocked animation: %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected animation to be blocked by stored fingerprint")
+	}
+}
+
+func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
+	ctx := context.Background()
+	downloader := &fakeDownloader{
+		filePaths: map[string]string{
+			"blocked-sticker": "stickers/blocked.webm",
+			"query-sticker":   "stickers/query.webm",
+		},
+		data: map[string][]byte{
+			"blocked-sticker": []byte("blocked"),
+			"query-sticker":   []byte("query"),
+		},
+	}
+	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
+	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
+
+	err := matcher.Block(ctx, domain.Content{
+		FileID:       "blocked-sticker",
+		FileUniqueID: "blocked-sticker-unique",
+		Type:         domain.MediaStickerStatic,
+		DurationSec:  2,
+		SizeBytes:    7,
+	})
+	if err != nil {
+		t.Fatalf("block video sticker: %v", err)
+	}
+
+	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+		FileID:       "query-sticker",
+		FileUniqueID: "query-sticker-unique",
+		Type:         domain.MediaStickerStatic,
+		DurationSec:  2,
+		SizeBytes:    5,
+	})
+	if err != nil {
+		t.Fatalf("is blocked video sticker: %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected video sticker to be blocked by stored fingerprint")
+	}
+}
+
+func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "videolike.sqlite")
+
+	first, err := OpenSQLiteStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	storedFingerprint, err := fingerprintVideoLike(domain.Content{
+		FileUniqueID: "stored-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  3,
+	}, domain.ExtractedMedia{
+		Frames: []domain.ExtractedFrame{
+			{Index: 0, PositionMillis: 0, Image: testSolidImage(color.RGBA{R: 255, A: 255})},
+			{Index: 1, PositionMillis: 1000, Image: testSolidImage(color.RGBA{G: 255, A: 255})},
+		},
+	})
+	if err != nil {
+		t.Fatalf("fingerprint stored hash: %v", err)
+	}
+	_, err = first.insert(ctx, storedFingerprint)
+	if err != nil {
+		t.Fatalf("insert stored hash: %v", err)
+	}
+	if err := first.close(); err != nil {
+		t.Fatalf("close first store: %v", err)
+	}
+
+	downloader := &fakeDownloader{
+		filePaths: map[string]string{
+			"query-file": "animations/query.mp4",
+		},
+		data: map[string][]byte{
+			"query-file": []byte("query"),
+		},
+	}
+	extractor := &fakeExtractor{extracted: domain.ExtractedMedia{
+		Frames: []domain.ExtractedFrame{
+			{Index: 0, PositionMillis: 0, Image: testSolidImage(color.RGBA{R: 255, A: 255})},
+			{Index: 1, PositionMillis: 1000, Image: testSolidImage(color.RGBA{G: 255, A: 255})},
+		},
+	}}
+
+	matcher, err := NewSQLiteMatcher(
+		ctx,
+		downloader,
+		extractor,
+		0,
+		1,
+		dbPath,
+		defaultTestPlan(),
+		defaultTestLimits(),
+		MatchRule{MinMatchedFrames: 2, MinMatchedRatio: 1},
+	)
+	if err != nil {
+		t.Fatalf("new sqlite matcher: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := matcher.Close(); err != nil {
+			t.Fatalf("close matcher: %v", err)
+		}
+	})
+
+	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+		FileID:       "query-file",
+		FileUniqueID: "query-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  3,
+		SizeBytes:    5,
+	})
+	if err != nil {
+		t.Fatalf("is blocked: %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected loaded fingerprint to block query")
 	}
 }
 
@@ -294,17 +502,46 @@ func newTestMatcher(t *testing.T, downloader *fakeDownloader) *matcher {
 func newTestMatcherWithLimits(t *testing.T, downloader *fakeDownloader, limits Limits) *matcher {
 	t.Helper()
 
-	contentMatcher, err := NewMatcher(downloader, limits)
+	matcher, err := NewMatcher(downloader, &fakeExtractor{}, 8, 1, defaultTestPlan(), limits, DefaultMatchRule())
 	if err != nil {
 		t.Fatalf("new matcher: %v", err)
 	}
 
-	matcher, ok := contentMatcher.(*matcher)
-	if !ok {
-		t.Fatalf("matcher type = %T, want *matcher", contentMatcher)
+	return matcher
+}
+
+func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader *fakeDownloader, extractor *fakeExtractor) *matcher {
+	t.Helper()
+
+	matcher, err := NewSQLiteMatcher(
+		ctx,
+		downloader,
+		extractor,
+		0,
+		1,
+		filepath.Join(t.TempDir(), "videolike.sqlite"),
+		defaultTestPlan(),
+		defaultTestLimits(),
+		MatchRule{MinMatchedFrames: 2, MinMatchedRatio: 1},
+	)
+	if err != nil {
+		t.Fatalf("new sqlite matcher: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := matcher.Close(); err != nil {
+			t.Fatalf("close matcher: %v", err)
+		}
+	})
 
 	return matcher
+}
+
+func defaultTestPlan() domain.MediaExtractionPlan {
+	return domain.MediaExtractionPlan{
+		MaxFrames:    3,
+		TargetWidth:  64,
+		TargetHeight: 64,
+	}
 }
 
 func defaultTestLimits() Limits {
@@ -313,6 +550,26 @@ func defaultTestLimits() Limits {
 		MaxVideoStickerDuration: 3 * time.Second,
 		MaxAnimationSize:        20 << 20,
 		MaxVideoStickerSize:     256 << 10,
-		FFmpegTimeout:           10 * time.Second,
 	}
+}
+
+func testExtractedVideoLikeMedia() domain.ExtractedMedia {
+	return domain.ExtractedMedia{
+		Frames: []domain.ExtractedFrame{
+			{Index: 0, PositionMillis: 0, Image: testSolidImage(color.RGBA{R: 255, A: 255})},
+			{Index: 1, PositionMillis: 1000, Image: testSolidImage(color.RGBA{G: 255, A: 255})},
+			{Index: 2, PositionMillis: 2000, Image: testSolidImage(color.RGBA{B: 255, A: 255})},
+		},
+	}
+}
+
+func testSolidImage(fill color.Color) image.Image {
+	img := image.NewNRGBA(image.Rect(0, 0, 32, 32))
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			img.Set(x, y, fill)
+		}
+	}
+
+	return img
 }

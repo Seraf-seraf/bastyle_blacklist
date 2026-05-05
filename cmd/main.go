@@ -12,9 +12,11 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/videolike"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -78,7 +80,51 @@ func main() {
 			log.Printf("[ERROR]: %s", err)
 		}
 	}()
-	contentMatcher, err := composite.NewMatcher(exactMatcher, imageHashMatcher)
+
+	matchers := []ports.ContentMatcher{exactMatcher, imageHashMatcher}
+	if cfg.Matching.VideoLike.Enabled {
+		videoLikeExtractor, err := media.NewFFmpegFrameExtractor(
+			cfg.Matching.VideoLike.FFmpegBinary,
+			cfg.Matching.VideoLike.FFmpegTimeout.Value(),
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+		videoLikeMatcher, err := videolike.NewSQLiteMatcher(
+			ctx,
+			mediaDownloader,
+			videoLikeExtractor,
+			cfg.Matching.VideoLike.Threshold,
+			cfg.Matching.VideoLike.Buffer,
+			cfg.Matching.VideoLike.DBPath,
+			domain.MediaExtractionPlan{
+				MaxFrames:    cfg.Matching.VideoLike.MaxFrames,
+				TargetWidth:  cfg.Matching.VideoLike.TargetWidth,
+				TargetHeight: cfg.Matching.VideoLike.TargetHeight,
+			},
+			videolike.Limits{
+				MaxAnimationDuration:    cfg.Matching.VideoLike.MaxAnimationDuration.Value(),
+				MaxVideoStickerDuration: cfg.Matching.VideoLike.MaxVideoStickerDuration.Value(),
+				MaxAnimationSize:        cfg.Matching.VideoLike.MaxAnimationSize.Bytes(),
+				MaxVideoStickerSize:     cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes(),
+			},
+			videolike.MatchRule{
+				MinMatchedFrames: cfg.Matching.VideoLike.MinMatchedFrames,
+				MinMatchedRatio:  cfg.Matching.VideoLike.MinMatchedRatio,
+			},
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+		defer func() {
+			if err := videoLikeMatcher.Close(); err != nil {
+				log.Printf("[ERROR]: %s", err)
+			}
+		}()
+		matchers = append(matchers, videoLikeMatcher)
+	}
+
+	contentMatcher, err := composite.NewMatcher(matchers...)
 	if err != nil {
 		log.Panic(err)
 	}
