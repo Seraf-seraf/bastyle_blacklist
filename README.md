@@ -249,5 +249,5 @@ go test ./internal/adapters/media \
 
 ## Что Изменилось В `v1.1.0`
 
-- добавлена поддержка Telegram animations и video stickers;
+- добавлена поддержка блокировок gif и анимированных стикеров;
 - добавлены tests и benchmarks для video-like слоя.
