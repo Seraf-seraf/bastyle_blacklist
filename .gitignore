@@ -2,5 +2,10 @@
 .codex/
 .env
 *.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 vendor/
 main
+AGENTS.md
+config.yaml

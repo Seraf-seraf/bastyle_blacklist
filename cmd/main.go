@@ -2,17 +2,24 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/memory"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/videolike"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/joho/godotenv"
 )
 
 type Job struct {
@@ -23,11 +30,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := godotenv.Load(); err != nil {
-		log.Panic("[ERROR]: failed to load .env")
+	configPath := flag.String("config", "configs/config.yaml", "path to yaml config")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Panic(err)
 	}
 
-	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
+	bot, err := tgbotapi.NewBotAPI(cfg.Telegram.Token)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -35,7 +46,7 @@ func main() {
 	log.Printf("Authorized as %s", bot.Self.UserName)
 
 	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+	u.Timeout = cfg.Telegram.UpdateTimeoutSeconds
 
 	updates := bot.GetUpdatesChan(u)
 	go func() {
@@ -44,21 +55,101 @@ func main() {
 		bot.StopReceivingUpdates()
 	}()
 
-	workers := 5
-	blacklist := memory.NewBlacklistStore(500)
-	actions := telegram.NewBotActions(bot)
-	admin := telegram.NewAdminChecker(bot)
+	exactMatcher, err := exact.NewMatcher(cfg.Matching.Exact.Buffer)
+	if err != nil {
+		log.Panic(err)
+	}
+	mediaDownloader, err := telegram.NewFileDownloader(bot)
+	if err != nil {
+		log.Panic(err)
+	}
+	mediaExtractor := media.NewExtractor()
+	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
+		ctx,
+		mediaDownloader,
+		mediaExtractor,
+		cfg.Matching.ImageHash.Threshold,
+		cfg.Matching.ImageHash.Buffer,
+		cfg.Matching.ImageHash.DBPath,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer func() {
+		if err := imageHashMatcher.Close(); err != nil {
+			log.Printf("[ERROR]: %s", err)
+		}
+	}()
 
-	service := moderation.NewService(blacklist, admin, actions)
+	matchers := []ports.ContentMatcher{exactMatcher, imageHashMatcher}
+	if cfg.Matching.VideoLike.Enabled {
+		videoLikeExtractor, err := media.NewFFmpegFrameExtractor(
+			cfg.Matching.VideoLike.FFmpegBinary,
+			cfg.Matching.VideoLike.FFmpegTimeout.Value(),
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+		videoLikeMatcher, err := videolike.NewSQLiteMatcher(
+			ctx,
+			mediaDownloader,
+			videoLikeExtractor,
+			cfg.Matching.VideoLike.Threshold,
+			cfg.Matching.VideoLike.Buffer,
+			cfg.Matching.VideoLike.DBPath,
+			domain.MediaExtractionPlan{
+				MaxFrames:    cfg.Matching.VideoLike.MaxFrames,
+				TargetWidth:  cfg.Matching.VideoLike.TargetWidth,
+				TargetHeight: cfg.Matching.VideoLike.TargetHeight,
+			},
+			videolike.Limits{
+				MaxAnimationDuration:    cfg.Matching.VideoLike.MaxAnimationDuration.Value(),
+				MaxVideoStickerDuration: cfg.Matching.VideoLike.MaxVideoStickerDuration.Value(),
+				MaxAnimationSize:        cfg.Matching.VideoLike.MaxAnimationSize.Bytes(),
+				MaxVideoStickerSize:     cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes(),
+			},
+			videolike.MatchRule{
+				MinMatchedFrames: cfg.Matching.VideoLike.MinMatchedFrames,
+				MinMatchedRatio:  cfg.Matching.VideoLike.MinMatchedRatio,
+			},
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+		defer func() {
+			if err := videoLikeMatcher.Close(); err != nil {
+				log.Printf("[ERROR]: %s", err)
+			}
+		}()
+		matchers = append(matchers, videoLikeMatcher)
+	}
 
-	jobs := make(chan Job, 100)
+	contentMatcher, err := composite.NewMatcher(matchers...)
+	if err != nil {
+		log.Panic(err)
+	}
+	actions, err := telegram.NewBotActions(bot)
+	if err != nil {
+		log.Panic(err)
+	}
+	admin, err := telegram.NewAdminChecker(bot)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	service, err := moderation.NewService(contentMatcher, admin, actions)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	jobs := make(chan Job, cfg.JobsBuffer)
 	var wg sync.WaitGroup
 
-	for i := 0; i < workers; i++ {
+	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker(jobs, service)
+			worker(ctx, jobs, service)
 		}()
 	}
 
@@ -71,7 +162,11 @@ func main() {
 	log.Println("Shutdown complete")
 }
 
-func worker(jobs <-chan Job, service *moderation.Service) {
+type moderationService interface {
+	HandleMessage(ctx context.Context, msg domain.Message) error
+}
+
+func worker(ctx context.Context, jobs <-chan Job, service moderationService) {
 	for job := range jobs {
 		msg := job.Update.Message
 		if msg == nil {
@@ -79,7 +174,7 @@ func worker(jobs <-chan Job, service *moderation.Service) {
 		}
 
 		message := telegram.MessageFromTelegram(msg)
-		if err := service.HandleMessage(message); err != nil {
+		if err := service.HandleMessage(ctx, message); err != nil {
 			log.Printf("[ERROR]: %s", err)
 		}
 	}

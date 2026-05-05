@@ -1,29 +1,42 @@
 package moderation
 
 import (
+	"context"
+	"errors"
+
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
-type Service struct {
-	blacklist ports.BlacklistStore
-	admins    ports.AdminChecker
-	actions   ports.MessageActions
+type service struct {
+	contentMatcher ports.ContentMatcher
+	admins         ports.AdminChecker
+	actions        ports.MessageActions
 }
 
 func NewService(
-	blacklist ports.BlacklistStore,
+	contentMatcher ports.ContentMatcher,
 	admins ports.AdminChecker,
 	actions ports.MessageActions,
-) *Service {
-	return &Service{
-		blacklist: blacklist,
-		admins:    admins,
-		actions:   actions,
+) (*service, error) {
+	if contentMatcher == nil {
+		return nil, errors.New("moderation service content matcher is not configured")
 	}
+	if admins == nil {
+		return nil, errors.New("moderation service admin checker is not configured")
+	}
+	if actions == nil {
+		return nil, errors.New("moderation service message actions are not configured")
+	}
+
+	return &service{
+		contentMatcher: contentMatcher,
+		admins:         admins,
+		actions:        actions,
+	}, nil
 }
 
-func (s *Service) HandleMessage(msg domain.Message) error {
+func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 	if msg.IsCommand() {
 
 		switch msg.Command {
@@ -45,13 +58,20 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 			}
 
 			target := msg.ReplyTo
+			if target.Content == nil {
+				_ = s.actions.SendMessage(msg.ChatID, "Текстовые сообщения не баним")
+				return nil
+			}
 
-			fileID := target.FileUniqueID
-			if fileID != "" {
-				s.blacklist.Block(fileID)
+			if err := s.contentMatcher.Block(ctx, *target.Content); err != nil {
+				return err
 			}
 
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
+				return err
+			}
+
+			if err := s.actions.DeleteMessage(msg.ChatID, msg.ID); err != nil {
 				return err
 			}
 		}
@@ -68,7 +88,16 @@ func (s *Service) HandleMessage(msg domain.Message) error {
 			continue
 		}
 
-		if id := target.FileUniqueID; id != "" && s.blacklist.IsBlocked(id) {
+		if target.Content == nil {
+			continue
+		}
+
+		blocked, err := s.contentMatcher.IsBlocked(ctx, *target.Content)
+		if err != nil {
+			return err
+		}
+
+		if blocked {
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
 				return err
 			}
