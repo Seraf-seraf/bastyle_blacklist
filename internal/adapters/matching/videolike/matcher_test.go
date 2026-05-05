@@ -5,10 +5,12 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
@@ -373,6 +375,55 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 	}
 }
 
+func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
+	ctx := context.Background()
+	downloader := &fakeDownloader{
+		filePaths: map[string]string{
+			"blocked-file": "animations/blocked.mp4",
+			"query-file":   "animations/query.mp4",
+		},
+		data: map[string][]byte{
+			"blocked-file": []byte("blocked"),
+			"query-file":   []byte("query"),
+		},
+	}
+	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
+	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
+
+	err := matcher.Block(ctx, domain.Content{
+		FileID:       "blocked-file",
+		FileUniqueID: "blocked-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  3,
+		SizeBytes:    7,
+	})
+	if err != nil {
+		t.Fatalf("block animation: %v", err)
+	}
+
+	extractor.extracted = domain.ExtractedMedia{
+		Frames: []domain.ExtractedFrame{
+			{Index: 0, PositionMillis: 0, Image: testPatternImage(1)},
+			{Index: 1, PositionMillis: 1000, Image: testPatternImage(2)},
+			{Index: 2, PositionMillis: 2000, Image: testPatternImage(3)},
+		},
+	}
+
+	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+		FileID:       "query-file",
+		FileUniqueID: "query-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  3,
+		SizeBytes:    5,
+	})
+	if err != nil {
+		t.Fatalf("is blocked animation: %v", err)
+	}
+	if blocked {
+		t.Fatal("expected unrelated animation to be allowed")
+	}
+}
+
 func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 	ctx := context.Background()
 	downloader := &fakeDownloader{
@@ -493,6 +544,46 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 	}
 }
 
+func TestMatcherWithRealFFmpegRejectsDurationLimitBeforeExtraction(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not available")
+	}
+	extractor, err := media.NewFFmpegFrameExtractor(ffmpeg, time.Second)
+	if err != nil {
+		t.Fatalf("new ffmpeg extractor: %v", err)
+	}
+	downloader := &fakeDownloader{}
+	limits := defaultTestLimits()
+	limits.MaxAnimationDuration = time.Second
+
+	matcher, err := NewMatcher(
+		downloader,
+		extractor,
+		8,
+		1,
+		defaultTestPlan(),
+		limits,
+		DefaultMatchRule(),
+	)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+
+	_, err = matcher.IsBlocked(context.Background(), domain.Content{
+		FileID:       "long-animation-file",
+		FileUniqueID: "long-animation-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  2,
+	})
+	if err == nil {
+		t.Fatal("expected duration limit error")
+	}
+	if downloader.calls != 0 {
+		t.Fatalf("download calls = %d, want 0", downloader.calls)
+	}
+}
+
 func newTestMatcher(t *testing.T, downloader *fakeDownloader) *matcher {
 	t.Helper()
 
@@ -568,6 +659,18 @@ func testSolidImage(fill color.Color) image.Image {
 	for y := 0; y < img.Bounds().Dy(); y++ {
 		for x := 0; x < img.Bounds().Dx(); x++ {
 			img.Set(x, y, fill)
+		}
+	}
+
+	return img
+}
+
+func testPatternImage(seed int) image.Image {
+	img := image.NewNRGBA(image.Rect(0, 0, 32, 32))
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			v := uint8((x*seed*17 + y*seed*31) % 255)
+			img.Set(x, y, color.RGBA{R: v, G: 255 - v, B: uint8((x + y + seed) % 255), A: 255})
 		}
 	}
 

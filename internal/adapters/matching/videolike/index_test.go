@@ -201,6 +201,31 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 	}
 }
 
+func BenchmarkVideoLikeLinearIndexSearch(b *testing.B) {
+	for _, size := range []struct {
+		name string
+		n    int
+	}{
+		{name: "10k", n: 10_000},
+		{name: "50k", n: 50_000},
+		{name: "100k", n: 100_000},
+	} {
+		b.Run(size.name, func(b *testing.B) {
+			index := benchmarkVideoLikeIndex(size.n)
+			query := benchmarkVideoLikeHash("query", 0xffff_ffff_ffff_ffff)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				if _, matched := index.Search(query, 8); matched {
+					b.Fatal("expected no match")
+				}
+			}
+		})
+	}
+}
+
 func benchmarkVideoLikeIndex(size int) *LinearIndex {
 	index := NewLinearIndex(size, DefaultMatchRule())
 	hashes := make([]StoredVideoLikeHash, 0, size)
