@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,6 +26,7 @@ type Telegram struct {
 type Matching struct {
 	Exact     Exact     `yaml:"exact"`
 	ImageHash ImageHash `yaml:"image_hash"`
+	VideoLike VideoLike `yaml:"video_like"`
 }
 
 type Exact struct {
@@ -34,6 +37,56 @@ type ImageHash struct {
 	DBPath    string `yaml:"db_path"`
 	Threshold int    `yaml:"threshold"`
 	Buffer    int    `yaml:"buffer"`
+}
+
+type VideoLike struct {
+	MaxAnimationDuration    Duration `yaml:"max_animation_duration"`
+	MaxVideoStickerDuration Duration `yaml:"max_video_sticker_duration"`
+	MaxAnimationSize        ByteSize `yaml:"max_animation_size"`
+	MaxVideoStickerSize     ByteSize `yaml:"max_video_sticker_size"`
+	FFmpegTimeout           Duration `yaml:"ffmpeg_timeout"`
+}
+
+type Duration time.Duration
+
+func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
+	var raw string
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	duration, err := time.ParseDuration(raw)
+	if err != nil {
+		return err
+	}
+
+	*d = Duration(duration)
+	return nil
+}
+
+func (d Duration) Value() time.Duration {
+	return time.Duration(d)
+}
+
+type ByteSize int64
+
+func (s *ByteSize) UnmarshalYAML(value *yaml.Node) error {
+	var raw string
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	size, err := humanize.ParseBytes(raw)
+	if err != nil {
+		return err
+	}
+
+	*s = ByteSize(size)
+	return nil
+}
+
+func (s ByteSize) Bytes() int64 {
+	return int64(s)
 }
 
 func Load(path string) (Config, error) {
@@ -73,6 +126,13 @@ func defaultConfig() Config {
 				Threshold: 12,
 				Buffer:    500,
 			},
+			VideoLike: VideoLike{
+				MaxAnimationDuration:    Duration(10 * time.Second),
+				MaxVideoStickerDuration: Duration(3 * time.Second),
+				MaxAnimationSize:        ByteSize(20 << 20),
+				MaxVideoStickerSize:     ByteSize(256 << 10),
+				FFmpegTimeout:           Duration(10 * time.Second),
+			},
 		},
 	}
 }
@@ -101,6 +161,21 @@ func (c Config) validate() error {
 	}
 	if c.Matching.ImageHash.Buffer <= 0 {
 		return errors.New("image hash buffer must be positive")
+	}
+	if c.Matching.VideoLike.MaxAnimationDuration.Value() <= 0 {
+		return errors.New("video like max animation duration must be positive")
+	}
+	if c.Matching.VideoLike.MaxVideoStickerDuration.Value() <= 0 {
+		return errors.New("video like max video sticker duration must be positive")
+	}
+	if c.Matching.VideoLike.MaxAnimationSize.Bytes() <= 0 {
+		return errors.New("video like max animation size must be positive")
+	}
+	if c.Matching.VideoLike.MaxVideoStickerSize.Bytes() <= 0 {
+		return errors.New("video like max video sticker size must be positive")
+	}
+	if c.Matching.VideoLike.FFmpegTimeout.Value() <= 0 {
+		return errors.New("video like ffmpeg timeout must be positive")
 	}
 
 	return nil

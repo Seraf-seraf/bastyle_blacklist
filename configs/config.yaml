@@ -1,6 +1,6 @@
 telegram:
   token: ""
-  update_timeout_seconds: 60
+  update_timeout_seconds: 5
 
 workers: 5
 jobs_buffer: 100
@@ -12,3 +12,9 @@ matching:
     db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
+  video_like:
+    max_animation_duration: 10s
+    max_video_sticker_duration: 3s
+    max_animation_size: 20MiB
+    max_video_sticker_size: 256KiB
+    ffmpeg_timeout: 10s

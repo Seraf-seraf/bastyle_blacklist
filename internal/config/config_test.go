@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadReadsYAMLConfig(t *testing.T) {
@@ -20,6 +21,12 @@ matching:
     db_path: "test.sqlite"
     threshold: 8
     buffer: 40
+  video_like:
+    max_animation_duration: 9s
+    max_video_sticker_duration: 3s
+    max_animation_size: 1MB
+    max_video_sticker_size: 200KB
+    ffmpeg_timeout: 7s
 `)
 
 	cfg, err := Load(path)
@@ -51,6 +58,21 @@ matching:
 	if cfg.Matching.ImageHash.Buffer != 40 {
 		t.Fatalf("unexpected image hash buffer: %d", cfg.Matching.ImageHash.Buffer)
 	}
+	if cfg.Matching.VideoLike.MaxAnimationDuration.Value() != 9*time.Second {
+		t.Fatalf("unexpected max animation duration: %s", cfg.Matching.VideoLike.MaxAnimationDuration.Value())
+	}
+	if cfg.Matching.VideoLike.MaxVideoStickerDuration.Value() != 3*time.Second {
+		t.Fatalf("unexpected max video sticker duration: %s", cfg.Matching.VideoLike.MaxVideoStickerDuration.Value())
+	}
+	if cfg.Matching.VideoLike.MaxAnimationSize.Bytes() != 1000000 {
+		t.Fatalf("unexpected max animation size: %d", cfg.Matching.VideoLike.MaxAnimationSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes() != 200000 {
+		t.Fatalf("unexpected max video sticker size: %d", cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.FFmpegTimeout.Value() != 7*time.Second {
+		t.Fatalf("unexpected ffmpeg timeout: %s", cfg.Matching.VideoLike.FFmpegTimeout.Value())
+	}
 }
 
 func TestLoadKeepsDefaultsForMissingOptionalValues(t *testing.T) {
@@ -76,6 +98,21 @@ matching:
 	if cfg.Matching.ImageHash.Threshold != 12 {
 		t.Fatalf("unexpected default image hash threshold: %d", cfg.Matching.ImageHash.Threshold)
 	}
+	if cfg.Matching.VideoLike.MaxAnimationDuration.Value() != 10*time.Second {
+		t.Fatalf("unexpected default max animation duration: %s", cfg.Matching.VideoLike.MaxAnimationDuration.Value())
+	}
+	if cfg.Matching.VideoLike.MaxVideoStickerDuration.Value() != 3*time.Second {
+		t.Fatalf("unexpected default max video sticker duration: %s", cfg.Matching.VideoLike.MaxVideoStickerDuration.Value())
+	}
+	if cfg.Matching.VideoLike.MaxAnimationSize.Bytes() != 20<<20 {
+		t.Fatalf("unexpected default max animation size: %d", cfg.Matching.VideoLike.MaxAnimationSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes() != 256<<10 {
+		t.Fatalf("unexpected default max video sticker size: %d", cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.FFmpegTimeout.Value() != 10*time.Second {
+		t.Fatalf("unexpected default ffmpeg timeout: %s", cfg.Matching.VideoLike.FFmpegTimeout.Value())
+	}
 }
 
 func TestLoadRequiresTelegramToken(t *testing.T) {
@@ -85,6 +122,40 @@ telegram:
 matching:
   image_hash:
     db_path: "test.sqlite"
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsInvalidVideoLikeConfig(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
+  video_like:
+    max_animation_duration: 0s
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsInvalidVideoLikeSize(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
+  video_like:
+    max_animation_size: "not-a-size"
 `)
 
 	_, err := Load(path)
