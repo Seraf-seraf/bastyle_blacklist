@@ -26,6 +26,10 @@ matching:
     max_video_sticker_duration: 3s
     max_animation_size: 1MB
     max_video_sticker_size: 200KB
+    max_frames: 8
+    target_width: 256
+    target_height: 256
+    ffmpeg_binary: /usr/bin/ffmpeg
     ffmpeg_timeout: 7s
 `)
 
@@ -70,6 +74,18 @@ matching:
 	if cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes() != 200000 {
 		t.Fatalf("unexpected max video sticker size: %d", cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes())
 	}
+	if cfg.Matching.VideoLike.MaxFrames != 8 {
+		t.Fatalf("unexpected max frames: %d", cfg.Matching.VideoLike.MaxFrames)
+	}
+	if cfg.Matching.VideoLike.TargetWidth != 256 {
+		t.Fatalf("unexpected target width: %d", cfg.Matching.VideoLike.TargetWidth)
+	}
+	if cfg.Matching.VideoLike.TargetHeight != 256 {
+		t.Fatalf("unexpected target height: %d", cfg.Matching.VideoLike.TargetHeight)
+	}
+	if cfg.Matching.VideoLike.FFmpegBinary != "/usr/bin/ffmpeg" {
+		t.Fatalf("unexpected ffmpeg binary: %q", cfg.Matching.VideoLike.FFmpegBinary)
+	}
 	if cfg.Matching.VideoLike.FFmpegTimeout.Value() != 7*time.Second {
 		t.Fatalf("unexpected ffmpeg timeout: %s", cfg.Matching.VideoLike.FFmpegTimeout.Value())
 	}
@@ -109,6 +125,18 @@ matching:
 	}
 	if cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes() != 256<<10 {
 		t.Fatalf("unexpected default max video sticker size: %d", cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes())
+	}
+	if cfg.Matching.VideoLike.MaxFrames != 10 {
+		t.Fatalf("unexpected default max frames: %d", cfg.Matching.VideoLike.MaxFrames)
+	}
+	if cfg.Matching.VideoLike.TargetWidth != 320 {
+		t.Fatalf("unexpected default target width: %d", cfg.Matching.VideoLike.TargetWidth)
+	}
+	if cfg.Matching.VideoLike.TargetHeight != 320 {
+		t.Fatalf("unexpected default target height: %d", cfg.Matching.VideoLike.TargetHeight)
+	}
+	if cfg.Matching.VideoLike.FFmpegBinary != "ffmpeg" {
+		t.Fatalf("unexpected default ffmpeg binary: %q", cfg.Matching.VideoLike.FFmpegBinary)
 	}
 	if cfg.Matching.VideoLike.FFmpegTimeout.Value() != 10*time.Second {
 		t.Fatalf("unexpected default ffmpeg timeout: %s", cfg.Matching.VideoLike.FFmpegTimeout.Value())
@@ -156,6 +184,57 @@ matching:
     db_path: "test.sqlite"
   video_like:
     max_animation_size: "not-a-size"
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsExcessiveVideoLikeFrames(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
+  video_like:
+    max_frames: 21
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsExcessiveVideoLikeTargetSize(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
+  video_like:
+    target_width: 1025
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsEmptyFFmpegBinary(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
+  video_like:
+    ffmpeg_binary: ""
 `)
 
 	_, err := Load(path)
