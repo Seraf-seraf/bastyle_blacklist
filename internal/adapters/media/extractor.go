@@ -35,7 +35,7 @@ func (e *Extractor) Extract(ctx context.Context, media domain.MediaFile, plan do
 
 	return domain.ExtractedMedia{
 		Frames: []domain.ExtractedFrame{
-			{Image: img},
+			{Index: 0, PositionMillis: 0, Image: img},
 		},
 	}, nil
 }

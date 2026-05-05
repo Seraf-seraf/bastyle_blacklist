@@ -30,7 +30,13 @@ func TestFFmpegFrameExtractorReturnsNoMoreThanMaxFrames(t *testing.T) {
 	if len(extracted.Frames) != 3 {
 		t.Fatalf("frames = %d, want 3", len(extracted.Frames))
 	}
-	for _, frame := range extracted.Frames {
+	for i, frame := range extracted.Frames {
+		if frame.Index != i {
+			t.Fatalf("frame index = %d, want %d", frame.Index, i)
+		}
+		if frame.PositionMillis != i*1000 {
+			t.Fatalf("frame position = %d, want %d", frame.PositionMillis, i*1000)
+		}
 		if frame.Image == nil {
 			t.Fatal("expected decoded frame image")
 		}

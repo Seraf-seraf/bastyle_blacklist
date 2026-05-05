@@ -155,7 +155,7 @@ func readFrameImages(dir string, maxFrames int) ([]domain.ExtractedFrame, error)
 	}
 
 	frames := make([]domain.ExtractedFrame, 0, len(paths))
-	for _, path := range paths {
+	for i, path := range paths {
 		file, err := os.Open(path)
 		if err != nil {
 			return nil, err
@@ -170,7 +170,11 @@ func readFrameImages(dir string, maxFrames int) ([]domain.ExtractedFrame, error)
 			return nil, closeErr
 		}
 
-		frames = append(frames, domain.ExtractedFrame{Image: img})
+		frames = append(frames, domain.ExtractedFrame{
+			Index:          i,
+			PositionMillis: i * 1000,
+			Image:          img,
+		})
 	}
 
 	return frames, nil

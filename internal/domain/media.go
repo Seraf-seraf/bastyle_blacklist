@@ -19,5 +19,7 @@ type ExtractedMedia struct {
 }
 
 type ExtractedFrame struct {
-	Image image.Image
+	Index          int
+	PositionMillis int
+	Image          image.Image
 }
