@@ -1,5 +1,5 @@
 telegram:
-  token: ""
+  token: "token"
   update_timeout_seconds: 5
 
 workers: 5
