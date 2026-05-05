@@ -102,7 +102,47 @@ func TestMatcherBlocksRotatedImageWithPerceptionHashVariants(t *testing.T) {
 	}
 }
 
-func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader fakeDownloader, extractor fakeExtractor, threshold int, buffer int) *Matcher {
+func TestNewMatcherRejectsInvalidConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		downloader fakeDownloader
+		extractor  fakeExtractor
+		threshold  int
+		buffer     int
+	}{
+		{
+			name:      "negative threshold",
+			extractor: fakeExtractor{},
+			threshold: -1,
+		},
+		{
+			name:      "negative buffer",
+			extractor: fakeExtractor{},
+			buffer:    -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewMatcher(tt.downloader, tt.extractor, tt.threshold, tt.buffer)
+			if err == nil {
+				t.Fatal("expected invalid config to be rejected")
+			}
+		})
+	}
+
+	_, err := NewMatcher(nil, fakeExtractor{}, 0, 0)
+	if err == nil {
+		t.Fatal("expected nil downloader to be rejected")
+	}
+
+	_, err = NewMatcher(fakeDownloader{}, nil, 0, 0)
+	if err == nil {
+		t.Fatal("expected nil extractor to be rejected")
+	}
+}
+
+func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader fakeDownloader, extractor fakeExtractor, threshold int, buffer int) *matcher {
 	t.Helper()
 
 	matcher, err := NewSQLiteMatcher(ctx, downloader, extractor, threshold, buffer, filepath.Join(t.TempDir(), "imagehash.sqlite"))

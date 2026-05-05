@@ -2,6 +2,7 @@ package moderation
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
@@ -17,12 +18,22 @@ func NewService(
 	contentMatcher ports.ContentMatcher,
 	admins ports.AdminChecker,
 	actions ports.MessageActions,
-) *Service {
+) (*Service, error) {
+	if contentMatcher == nil {
+		return nil, errors.New("moderation service content matcher is not configured")
+	}
+	if admins == nil {
+		return nil, errors.New("moderation service admin checker is not configured")
+	}
+	if actions == nil {
+		return nil, errors.New("moderation service message actions are not configured")
+	}
+
 	return &Service{
 		contentMatcher: contentMatcher,
 		admins:         admins,
 		actions:        actions,
-	}
+	}, nil
 }
 
 func (s *Service) HandleMessage(ctx context.Context, msg domain.Message) error {

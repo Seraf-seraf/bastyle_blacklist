@@ -18,13 +18,17 @@ type FileDownloader struct {
 	httpClient *http.Client
 }
 
-func NewFileDownloader(bot *tgbotapi.BotAPI) *FileDownloader {
+func NewFileDownloader(bot *tgbotapi.BotAPI) (*FileDownloader, error) {
+	if bot == nil {
+		return nil, errors.New("telegram file downloader bot is not configured")
+	}
+
 	return &FileDownloader{
 		bot: bot,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-	}
+	}, nil
 }
 
 func (d *FileDownloader) Download(ctx context.Context, content domain.Content) (domain.MediaFile, error) {

@@ -1,7 +1,7 @@
 package telegram
 
 import (
-	"fmt"
+	"errors"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -10,10 +10,14 @@ type AdminChecker struct {
 	bot *tgbotapi.BotAPI
 }
 
-func NewAdminChecker(bot *tgbotapi.BotAPI) *AdminChecker {
+func NewAdminChecker(bot *tgbotapi.BotAPI) (*AdminChecker, error) {
+	if bot == nil {
+		return nil, errors.New("telegram admin checker bot is not configured")
+	}
+
 	return &AdminChecker{
 		bot: bot,
-	}
+	}, nil
 }
 
 func (a *AdminChecker) IsAdmin(chatID int64, userID int64) (bool, error) {
@@ -26,7 +30,7 @@ func (a *AdminChecker) IsAdmin(chatID int64, userID int64) (bool, error) {
 
 	member, err := a.bot.GetChatMember(cfg)
 	if err != nil {
-		return false, fmt.Errorf("[ERROR]: %w", err)
+		return false, err
 	}
 
 	return member.Status == "administrator" || member.Status == "creator", nil

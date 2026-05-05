@@ -64,7 +64,10 @@ func TestHandleMessageBanBlocksTargetAndDeletesTargetThenCommand(t *testing.T) {
 	ctx := context.Background()
 	matcher := &fakeMatcher{}
 	actions := &fakeActions{}
-	service := NewService(matcher, fakeAdmins{admin: true}, actions)
+	service, err := NewService(matcher, fakeAdmins{admin: true}, actions)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
 	content := domain.Content{
 		FileID:       "file-id",
 		FileUniqueID: "file-unique-id",
@@ -104,7 +107,10 @@ func TestHandleMessageBanDoesNotBlockOrDeleteTextReply(t *testing.T) {
 	ctx := context.Background()
 	matcher := &fakeMatcher{}
 	actions := &fakeActions{}
-	service := NewService(matcher, fakeAdmins{admin: true}, actions)
+	service, err := NewService(matcher, fakeAdmins{admin: true}, actions)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
 
 	msg := domain.Message{
 		ID:       20,
@@ -134,5 +140,23 @@ func TestHandleMessageBanDoesNotBlockOrDeleteTextReply(t *testing.T) {
 	}
 	if !reflect.DeepEqual(actions.sent, wantSent) {
 		t.Fatalf("sent messages = %#v, want %#v", actions.sent, wantSent)
+	}
+}
+
+func TestNewServiceRejectsNilDependencies(t *testing.T) {
+	matcher := &fakeMatcher{}
+	admins := fakeAdmins{}
+	actions := &fakeActions{}
+
+	if _, err := NewService(nil, admins, actions); err == nil {
+		t.Fatal("expected nil content matcher to be rejected")
+	}
+
+	if _, err := NewService(matcher, nil, actions); err == nil {
+		t.Fatal("expected nil admin checker to be rejected")
+	}
+
+	if _, err := NewService(matcher, admins, nil); err == nil {
+		t.Fatal("expected nil message actions to be rejected")
 	}
 }

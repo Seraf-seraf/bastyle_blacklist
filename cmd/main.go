@@ -52,8 +52,14 @@ func main() {
 		bot.StopReceivingUpdates()
 	}()
 
-	exactMatcher := exact.NewMatcher(cfg.Matching.Exact.Buffer)
-	mediaDownloader := telegram.NewFileDownloader(bot)
+	exactMatcher, err := exact.NewMatcher(cfg.Matching.Exact.Buffer)
+	if err != nil {
+		log.Panic(err)
+	}
+	mediaDownloader, err := telegram.NewFileDownloader(bot)
+	if err != nil {
+		log.Panic(err)
+	}
 	mediaExtractor := media.NewExtractor()
 	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
 		ctx,
@@ -71,11 +77,23 @@ func main() {
 			log.Printf("[ERROR]: %s", err)
 		}
 	}()
-	contentMatcher := composite.NewMatcher(exactMatcher, imageHashMatcher)
-	actions := telegram.NewBotActions(bot)
-	admin := telegram.NewAdminChecker(bot)
+	contentMatcher, err := composite.NewMatcher(exactMatcher, imageHashMatcher)
+	if err != nil {
+		log.Panic(err)
+	}
+	actions, err := telegram.NewBotActions(bot)
+	if err != nil {
+		log.Panic(err)
+	}
+	admin, err := telegram.NewAdminChecker(bot)
+	if err != nil {
+		log.Panic(err)
+	}
 
-	service := moderation.NewService(contentMatcher, admin, actions)
+	service, err := moderation.NewService(contentMatcher, admin, actions)
+	if err != nil {
+		log.Panic(err)
+	}
 
 	jobs := make(chan Job, cfg.JobsBuffer)
 	var wg sync.WaitGroup

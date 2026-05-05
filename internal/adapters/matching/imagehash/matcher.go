@@ -13,7 +13,7 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-type Matcher struct {
+type matcher struct {
 	downloader ports.MediaDownloader
 	extractor  ports.MediaExtractor
 	threshold  int
@@ -22,16 +22,27 @@ type Matcher struct {
 	store *SQLiteStore
 }
 
-func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) *Matcher {
-	return &Matcher{
+func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) (*matcher, error) {
+	if err := validateMatcherConfig(downloader, extractor, threshold, buffer); err != nil {
+		return nil, err
+	}
+
+	return &matcher{
 		downloader: downloader,
 		extractor:  extractor,
 		threshold:  threshold,
 		index:      NewLinearIndex(buffer),
-	}
+	}, nil
 }
 
-func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int, dbPath string) (*Matcher, error) {
+func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int, dbPath string) (*matcher, error) {
+	if dbPath == "" {
+		return nil, errors.New("imagehash matcher db path is not configured")
+	}
+	if err := validateMatcherConfig(downloader, extractor, threshold, buffer); err != nil {
+		return nil, err
+	}
+
 	store, err := OpenSQLiteStore(ctx, dbPath)
 	if err != nil {
 		return nil, err
@@ -43,14 +54,35 @@ func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, ext
 		return nil, err
 	}
 
-	matcher := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes))
+	matcher, err := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes))
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	matcher.store = store
 	matcher.index.AddMany(storedHashes)
 
 	return matcher, nil
 }
 
-func (m *Matcher) Close() error {
+func validateMatcherConfig(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) error {
+	if downloader == nil {
+		return errors.New("imagehash matcher downloader is not configured")
+	}
+	if extractor == nil {
+		return errors.New("imagehash matcher extractor is not configured")
+	}
+	if threshold < 0 {
+		return errors.New("imagehash matcher threshold must be non-negative")
+	}
+	if buffer < 0 {
+		return errors.New("imagehash matcher buffer must be non-negative")
+	}
+
+	return nil
+}
+
+func (m *matcher) Close() error {
 	if m.store == nil {
 		return nil
 	}
@@ -58,7 +90,7 @@ func (m *Matcher) Close() error {
 	return m.store.Close()
 }
 
-func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
 	if !m.supports(content) {
 		return false, nil
 	}
@@ -74,7 +106,7 @@ func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 	return m.index.Search(hashes, m.threshold), nil
 }
 
-func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
+func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 	if !m.supports(content) {
 		return nil
 	}
@@ -106,13 +138,13 @@ func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
 	return nil
 }
 
-func (m *Matcher) supports(content domain.Content) bool {
+func (m *matcher) supports(content domain.Content) bool {
 	return (content.Type == domain.MediaPhoto ||
 		content.Type == domain.MediaStickerStatic) &&
 		content.CanDownload()
 }
 
-func (m *Matcher) hashContent(ctx context.Context, content domain.Content) ([]uint64, error) {
+func (m *matcher) hashContent(ctx context.Context, content domain.Content) ([]uint64, error) {
 	media, err := m.downloader.Download(ctx, content)
 	if err != nil {
 		return nil, err
