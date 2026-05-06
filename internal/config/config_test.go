@@ -12,6 +12,9 @@ func TestLoadReadsYAMLConfig(t *testing.T) {
 telegram:
   token: "token"
   update_timeout_seconds: 45
+  http_client:
+    enabled: true
+    proxy_url: "http://127.0.0.1:8080"
 workers: 3
 jobs_buffer: 20
 matching:
@@ -49,6 +52,12 @@ matching:
 	}
 	if cfg.Telegram.UpdateTimeoutSeconds != 45 {
 		t.Fatalf("unexpected update timeout: %d", cfg.Telegram.UpdateTimeoutSeconds)
+	}
+	if !cfg.Telegram.HTTPClient.Enabled {
+		t.Fatal("expected telegram http client to be enabled")
+	}
+	if cfg.Telegram.HTTPClient.ProxyURL != "http://127.0.0.1:8080" {
+		t.Fatalf("unexpected telegram http client proxy url: %q", cfg.Telegram.HTTPClient.ProxyURL)
 	}
 	if cfg.Workers != 3 {
 		t.Fatalf("unexpected workers: %d", cfg.Workers)
@@ -183,6 +192,12 @@ matching:
 	if cfg.Matching.VideoLike.FFmpegTimeout.Value() != 10*time.Second {
 		t.Fatalf("unexpected default ffmpeg timeout: %s", cfg.Matching.VideoLike.FFmpegTimeout.Value())
 	}
+	if cfg.Telegram.HTTPClient.Enabled {
+		t.Fatal("expected default telegram http client to be disabled")
+	}
+	if cfg.Telegram.HTTPClient.ProxyURL != "" {
+		t.Fatalf("unexpected default telegram http client proxy url: %q", cfg.Telegram.HTTPClient.ProxyURL)
+	}
 }
 
 func TestLoadRequiresTelegramToken(t *testing.T) {
@@ -277,6 +292,24 @@ matching:
     db_path: "test.sqlite"
   video_like:
     ffmpeg_binary: ""
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsInvalidHTTPClientProxyURL(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "token"
+  http_client:
+    enabled: true
+    proxy_url: "127.0.0.1:8080"
+matching:
+  image_hash:
+    db_path: "test.sqlite"
 `)
 
 	_, err := Load(path)

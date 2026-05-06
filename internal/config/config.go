@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"errors"
+	"net/url"
 	"os"
 	"time"
 
@@ -24,8 +25,14 @@ type Config struct {
 }
 
 type Telegram struct {
-	Token                string `yaml:"token"`
-	UpdateTimeoutSeconds int    `yaml:"update_timeout_seconds"`
+	Token                string     `yaml:"token"`
+	UpdateTimeoutSeconds int        `yaml:"update_timeout_seconds"`
+	HTTPClient           HTTPClient `yaml:"http_client"`
+}
+
+type HTTPClient struct {
+	Enabled  bool   `yaml:"enabled"`
+	ProxyURL string `yaml:"proxy_url"`
 }
 
 type Matching struct {
@@ -168,6 +175,15 @@ func (c Config) validate() error {
 	}
 	if c.Telegram.UpdateTimeoutSeconds <= 0 {
 		return errors.New("telegram update timeout must be positive")
+	}
+	if c.Telegram.HTTPClient.Enabled && c.Telegram.HTTPClient.ProxyURL != "" {
+		proxyURL, err := url.Parse(c.Telegram.HTTPClient.ProxyURL)
+		if err != nil {
+			return err
+		}
+		if proxyURL.Scheme == "" || proxyURL.Host == "" {
+			return errors.New("telegram http client proxy url must include scheme and host")
+		}
 	}
 	if c.Workers <= 0 {
 		return errors.New("workers must be positive")

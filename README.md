@@ -116,6 +116,9 @@ cp configs/config.example.yaml configs/config.yaml
 telegram:
   token: "your-telegram-bot-token"
   update_timeout_seconds: 5
+  http_client:
+    enabled: false
+    proxy_url: ""
 
 workers: 5
 jobs_buffer: 100
@@ -150,6 +153,10 @@ matching:
 ### Основные Параметры
 
 `telegram.token` - token Telegram-бота.
+`telegram.http_client.enabled` - включает инициализацию Telegram Bot API через
+настроенный HTTP client.
+`telegram.http_client.proxy_url` - proxy URL для HTTP client. Если значение
+пустое, используется proxy из окружения.
 
 `workers` - количество worker'ов для обработки сообщений.
 `jobs_buffer` - размер очереди сообщений.
@@ -261,8 +268,8 @@ sudo install -o root -g root -m 0755 build/bin/bastyle-blacklist /usr/local/bin/
 Подготовка пользователя, config и директории данных:
 
 ```bash
-id -u bastyle >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin/nologin bastyle
-sudo install -d -o bastyle -g bastyle -m 0750 /var/lib/bastyle
+id -u bastyle_bot >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin/nologin bastyle_bot
+sudo install -d -o bastyle_bot -g bastyle_bot -m 0750 /var/lib/bastyle
 sudo install -d -o root -g root -m 0755 /etc/bastyle
 sudo install -o root -g root -m 0640 configs/config.example.yaml /etc/bastyle/config.yaml
 ```
@@ -292,7 +299,7 @@ systemctl status bastyle-blacklist
 journalctl -u bastyle-blacklist -f
 ```
 
-Unit запускает бот от пользователя `bastyle`, хранит рабочие данные в
+Unit запускает бот от пользователя `bastyle_bot`, хранит рабочие данные в
 `/var/lib/bastyle`, читает config из `/etc/bastyle/config.yaml` и ограничивает
 процесс `512M` памяти.
 

@@ -5,9 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=bastyle
-Group=bastyle
+User=bastyle_bot
+Group=bastyle_bot
 WorkingDirectory=/var/lib/bastyle
+
+Environment=GOMAXPROCS=1
+Environment="HTTPS_PROXY=http://<АЙПИ ПРОКСИ>:7890"
+Environment="HTTP_PROXY=http://<АЙПИ ПРОКСИ>:7890"
+
 ExecStart=/usr/local/bin/bastyle-blacklist -config /etc/bastyle/config.yaml
 
 Restart=on-failure

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/httpclient"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
@@ -38,7 +39,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	bot, err := tgbotapi.NewBotAPI(cfg.Telegram.Token)
+	bot, err := newTelegramBot(cfg)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -160,6 +161,21 @@ func main() {
 	close(jobs)
 	wg.Wait()
 	log.Println("Shutdown complete")
+}
+
+func newTelegramBot(cfg config.Config) (*tgbotapi.BotAPI, error) {
+	if !cfg.Telegram.HTTPClient.Enabled {
+		return tgbotapi.NewBotAPI(cfg.Telegram.Token)
+	}
+
+	client, err := httpclient.New(httpclient.Options{
+		ProxyURL: cfg.Telegram.HTTPClient.ProxyURL,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return tgbotapi.NewBotAPIWithClient(cfg.Telegram.Token, tgbotapi.APIEndpoint, client)
 }
 
 type moderationService interface {

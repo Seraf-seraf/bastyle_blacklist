@@ -1,6 +1,9 @@
 telegram:
   token: "token"
   update_timeout_seconds: 5
+  http_client:
+    enabled: false
+    proxy_url: ""
 
 workers: 5
 jobs_buffer: 100
