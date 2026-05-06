@@ -5,18 +5,23 @@ IMAGE ?= $(APP):local
 CONFIG ?= configs/config.yaml
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: help fmt fmt-check vet test build clean up down ci
+.PHONY: help fmt fmt-check vet test build clean up stop down ps logs restart ci
 
 help:
-	@printf '%s\n' \
-		'Targets:' \
-		'  fmt           format Go code' \
-		'  vet           run go vet' \
-		'  test          run Go tests' \
-		'  build         build local binary' \
-		'  up    start bot with Docker Compose' \
-		'  down  stop Docker Compose stack' \
-		'  ci            run CI checks'
+	@echo "Доступные команды:"
+	@echo "  make fmt       - отформатировать Go-код"
+	@echo "  make fmt-check - проверить форматирование Go-кода"
+	@echo "  make vet       - запустить go vet"
+	@echo "  make test      - запустить все Go-тесты"
+	@echo "  make build     - собрать бинарник бота"
+	@echo "  make clean     - удалить локальные build-артефакты"
+	@echo "  make ci        - полный безопасный прогон: vet + test + build"
+	@echo "  make up        - запуск бота через Docker Compose (build + detached)"
+	@echo "  make stop      - остановка контейнеров без удаления"
+	@echo "  make down      - остановка и удаление контейнеров"
+	@echo "  make ps        - статус контейнеров в табличном виде"
+	@echo "  make logs      - логи всех сервисов (follow)"
+	@echo "  make restart   - перезапуск стека"
 
 fmt:
 	gofmt -w cmd internal
@@ -40,7 +45,19 @@ clean:
 up:
 	docker compose up -d --build
 
+stop:
+	docker compose stop
+
 down:
 	docker compose down
+
+ps:
+	docker compose ps
+
+logs:
+	docker compose logs -f
+
+restart:
+	docker compose restart
 
 ci: vet test build
