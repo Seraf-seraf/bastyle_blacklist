@@ -192,6 +192,8 @@ Authorized as <bot_username>
 make test
 make build
 make ci
+make up
+make down
 ```
 
 `make ci` запускает `go vet`, тесты и сборку бинарника в
@@ -235,13 +237,13 @@ matching:
 
 ```bash
 cp configs/config.example.yaml configs/config.yaml
-docker compose up -d --build
+make up
 ```
 
 Остановка:
 
 ```bash
-docker compose down
+make down
 ```
 
 Compose монтирует config в `/etc/bastyle/config.yaml`, данные в

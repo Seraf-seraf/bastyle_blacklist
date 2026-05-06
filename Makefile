@@ -5,7 +5,7 @@ IMAGE ?= $(APP):local
 CONFIG ?= configs/config.yaml
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: help fmt fmt-check vet test build run clean docker-build compose-up compose-down ci
+.PHONY: help fmt fmt-check vet test build clean up down ci
 
 help:
 	@printf '%s\n' \
