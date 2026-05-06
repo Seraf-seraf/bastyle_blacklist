@@ -1,20 +1,27 @@
-# Базовый образ для Go
-FROM golang:latest
+FROM golang:1.25.4-bookworm AS builder
 
-# Создание директории
-RUN mkdir /app
+WORKDIR /src
 
-# Копирование файлов в директорию app
-ADD .. /app/
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Установка рабочей директории
-WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bastyle-blacklist ./cmd/main.go
 
-# Получение зависимостей
-RUN go get -d
+FROM debian:bookworm-slim
 
-# Сборка приложения
-RUN go build /app/cmd/main.go -o main
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+	&& rm -rf /var/lib/apt/lists/*
 
-# Запуск бота
-CMD ["/app/main"]
+RUN useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin/nologin bastyle \
+	&& mkdir -p /etc/bastyle /var/lib/bastyle \
+	&& chown -R bastyle:bastyle /var/lib/bastyle
+
+COPY --from=builder /out/bastyle-blacklist /usr/local/bin/bastyle-blacklist
+
+USER bastyle
+WORKDIR /var/lib/bastyle
+
+ENTRYPOINT ["/usr/local/bin/bastyle-blacklist"]
+CMD ["-config", "/etc/bastyle/config.yaml"]

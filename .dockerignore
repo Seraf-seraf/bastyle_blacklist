@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.codex
+build/*.service
+docs
+vendor
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+bastyle
+main
+.env
+configs/config.yaml

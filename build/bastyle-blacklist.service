@@ -1,0 +1,20 @@
+[Unit]
+Description=Bastyle Blacklist Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bastyle
+Group=bastyle
+WorkingDirectory=/var/lib/bastyle
+ExecStart=/usr/local/bin/bastyle-blacklist -config /etc/bastyle/config.yaml
+
+Restart=on-failure
+RestartSec=5
+MemoryMax=512M
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

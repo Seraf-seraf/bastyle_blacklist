@@ -1,0 +1,15 @@
+services:
+  bastyle-blacklist:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+    image: bastyle-blacklist:local
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - ./configs/config.yaml:/etc/bastyle/config.yaml:ro
+      - bastyle-data:/var/lib/bastyle
+
+volumes:
+  bastyle-data:

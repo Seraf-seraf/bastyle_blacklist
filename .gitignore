@@ -7,5 +7,7 @@
 *.sqlite-wal
 vendor/
 main
+bastyle
+build/bin/
 AGENTS.md
 config.yaml

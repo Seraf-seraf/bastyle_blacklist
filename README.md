@@ -1,6 +1,6 @@
 # Bastyle Blacklist
 
-Версия: `v1.1.0`
+Версия: `v1.1.1`
 
 `Bastyle Blacklist` - Telegram-бот для автоматической модерации медиа в
 групповых чатах. Бот помогает администраторам один раз заблокировать нежеланный
@@ -184,25 +184,115 @@ go run ./cmd/main.go -config configs/config.yaml
 Authorized as <bot_username>
 ```
 
+## Makefile И CI
+
+Основные команды:
+
+```bash
+make test
+make build
+make ci
+```
+
+`make ci` запускает `go vet`, тесты и сборку бинарника в
+`build/bin/bastyle-blacklist`.
+
+В репозитории добавлен GitHub Actions workflow `.github/workflows/ci.yml`.
+Он запускает `make ci` и отдельно проверяет сборку Docker-образа.
+
 ## Docker
 
 Сборка:
 
 ```bash
-docker build -f build/Dockerfile -t bastyle-blacklist:1.1.0 .
+docker build -f build/Dockerfile -t bastyle-blacklist:1.1.1 .
 ```
 
 Запуск:
 
 ```bash
 docker run --rm \
-  -v "$PWD/configs/config.yaml:/app/configs/config.yaml" \
-  -v "$PWD/bastyle.sqlite:/app/bastyle.sqlite" \
-  bastyle-blacklist:1.1.0
+  --memory 512m \
+  --memory-swap 512m \
+  -v "$PWD/configs/config.yaml:/etc/bastyle/config.yaml:ro" \
+  -v bastyle-data:/var/lib/bastyle \
+  bastyle-blacklist:1.1.1
 ```
 
-Если SQLite-файл находится в другом месте, укажите тот же путь в
-`configs/config.yaml` и volume mount.
+Для Docker удобно указывать SQLite-файл внутри `/var/lib/bastyle`:
+
+```yaml
+matching:
+  image_hash:
+    db_path: "/var/lib/bastyle/bastyle.sqlite"
+  video_like:
+    db_path: "/var/lib/bastyle/bastyle.sqlite"
+```
+
+## Docker Compose
+
+Запуск через Compose:
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+docker compose up -d --build
+```
+
+Остановка:
+
+```bash
+docker compose down
+```
+
+Compose монтирует config в `/etc/bastyle/config.yaml`, данные в
+`/var/lib/bastyle` и ограничивает контейнер `512m` памяти.
+
+## Systemd
+
+Сборка и установка бинарника:
+
+```bash
+make build
+sudo install -o root -g root -m 0755 build/bin/bastyle-blacklist /usr/local/bin/bastyle-blacklist
+```
+
+Подготовка пользователя, config и директории данных:
+
+```bash
+id -u bastyle >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin/nologin bastyle
+sudo install -d -o bastyle -g bastyle -m 0750 /var/lib/bastyle
+sudo install -d -o root -g root -m 0755 /etc/bastyle
+sudo install -o root -g root -m 0640 configs/config.example.yaml /etc/bastyle/config.yaml
+```
+
+В `/etc/bastyle/config.yaml` укажите Telegram token и production-пути к SQLite:
+
+```yaml
+matching:
+  image_hash:
+    db_path: "/var/lib/bastyle/bastyle.sqlite"
+  video_like:
+    db_path: "/var/lib/bastyle/bastyle.sqlite"
+```
+
+Установка unit-файла:
+
+```bash
+sudo install -o root -g root -m 0644 build/bastyle-blacklist.service /etc/systemd/system/bastyle-blacklist.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now bastyle-blacklist
+```
+
+Проверка:
+
+```bash
+systemctl status bastyle-blacklist
+journalctl -u bastyle-blacklist -f
+```
+
+Unit запускает бот от пользователя `bastyle`, хранит рабочие данные в
+`/var/lib/bastyle`, читает config из `/etc/bastyle/config.yaml` и ограничивает
+процесс `512M` памяти.
 
 ## Использование
 
