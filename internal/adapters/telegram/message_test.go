@@ -121,6 +121,36 @@ func TestMessageFromTelegramParsesBotCommand(t *testing.T) {
 	}
 }
 
+func TestMessageFromTelegramUsesParentChatForReplyWithoutChat(t *testing.T) {
+	msg := mustTelegramMessage(t, `{
+		"message_id": 2,
+		"chat": {"id": 10},
+		"text": "/ban",
+		"entities": [{"offset": 0, "length": 4, "type": "bot_command"}],
+		"reply_to_message": {
+			"message_id": 1,
+			"animation": {
+				"file_id": "animation-file",
+				"file_unique_id": "animation-unique",
+				"file_name": "sample.mp4",
+				"mime_type": "video/mp4",
+				"file_size": 1234,
+				"duration": 2,
+				"width": 320,
+				"height": 240
+			}
+		}
+	}`)
+
+	message := MessageFromTelegram(msg)
+	if message.ReplyTo == nil {
+		t.Fatal("reply is nil")
+	}
+	if message.ReplyTo.ChatID != 10 {
+		t.Fatalf("reply chat id = %d, want 10", message.ReplyTo.ChatID)
+	}
+}
+
 func mustTelegramMessage(t *testing.T, data string) *tgbotapi.Message {
 	t.Helper()
 
