@@ -9,9 +9,8 @@ User=bastyle_bot
 Group=bastyle_bot
 WorkingDirectory=/var/lib/bastyle
 
-Environment=GOMAXPROCS=1
-Environment="HTTPS_PROXY=http://<АЙПИ ПРОКСИ>:7890"
-Environment="HTTP_PROXY=http://<АЙПИ ПРОКСИ>:7890"
+Environment="HTTPS_PROXY=http://<IP:PORT>"
+Environment="HTTP_PROXY=http://<IP:PORT>"
 
 ExecStart=/usr/local/bin/bastyle-blacklist -config /etc/bastyle/config.yaml
 
