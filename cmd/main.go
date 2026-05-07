@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/httpclient"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/aivector"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
@@ -87,46 +88,88 @@ func main() {
 	}()
 
 	matchers := []ports.ContentMatcher{exactMatcher, imageHashMatcher}
-	if cfg.Matching.VideoLike.Enabled {
-		videoLikeExtractor, err := media.NewFFmpegFrameExtractor(
-			cfg.Matching.VideoLike.FFmpegBinary,
-			cfg.Matching.VideoLike.FFmpegTimeout.Value(),
+	videoLikeExtractor, err := media.NewFFmpegFrameExtractor(
+		cfg.Matching.VideoMedia.FFmpegBinary,
+		cfg.Matching.VideoMedia.FFmpegTimeout.Value(),
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+	videoLikeMatcher, err := videolike.NewSQLiteMatcher(
+		ctx,
+		mediaDownloader,
+		videoLikeExtractor,
+		cfg.Matching.VideoLike.Threshold,
+		cfg.Matching.VideoLike.Buffer,
+		cfg.Matching.VideoLike.DBPath,
+		domain.MediaExtractionPlan{
+			MaxFrames:    cfg.Matching.VideoMedia.MaxFrames,
+			TargetWidth:  cfg.Matching.VideoMedia.TargetWidth,
+			TargetHeight: cfg.Matching.VideoMedia.TargetHeight,
+		},
+		videolike.Limits{
+			MaxAnimationDuration:    cfg.Matching.VideoMedia.MaxAnimationDuration.Value(),
+			MaxVideoStickerDuration: cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value(),
+			MaxAnimationSize:        cfg.Matching.VideoMedia.MaxAnimationSize.Bytes(),
+			MaxVideoStickerSize:     cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes(),
+		},
+		videolike.MatchRule{
+			MinMatchedFrames: cfg.Matching.VideoMatch.MinMatchedFrames,
+			MinMatchedRatio:  cfg.Matching.VideoMatch.MinMatchedRatio,
+		},
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer func() {
+		if err := videoLikeMatcher.Close(); err != nil {
+			log.Printf("[ERROR]: %s", err)
+		}
+	}()
+	matchers = append(matchers, videoLikeMatcher)
+
+	if cfg.Matching.AIVector.Enabled {
+		aiVectorClient, err := aivector.NewHTTPClient(
+			cfg.Matching.AIVector.Service.URL(),
+			cfg.Matching.AIVector.RequestTimeout.Value(),
 		)
 		if err != nil {
 			log.Panic(err)
 		}
-		videoLikeMatcher, err := videolike.NewSQLiteMatcher(
-			ctx,
-			mediaDownloader,
-			videoLikeExtractor,
-			cfg.Matching.VideoLike.Threshold,
-			cfg.Matching.VideoLike.Buffer,
-			cfg.Matching.VideoLike.DBPath,
-			domain.MediaExtractionPlan{
-				MaxFrames:    cfg.Matching.VideoLike.MaxFrames,
-				TargetWidth:  cfg.Matching.VideoLike.TargetWidth,
-				TargetHeight: cfg.Matching.VideoLike.TargetHeight,
-			},
-			videolike.Limits{
-				MaxAnimationDuration:    cfg.Matching.VideoLike.MaxAnimationDuration.Value(),
-				MaxVideoStickerDuration: cfg.Matching.VideoLike.MaxVideoStickerDuration.Value(),
-				MaxAnimationSize:        cfg.Matching.VideoLike.MaxAnimationSize.Bytes(),
-				MaxVideoStickerSize:     cfg.Matching.VideoLike.MaxVideoStickerSize.Bytes(),
-			},
-			videolike.MatchRule{
-				MinMatchedFrames: cfg.Matching.VideoLike.MinMatchedFrames,
-				MinMatchedRatio:  cfg.Matching.VideoLike.MinMatchedRatio,
-			},
+		aiVectorExtractor, err := media.NewFFmpegFrameExtractor(
+			cfg.Matching.VideoMedia.FFmpegBinary,
+			cfg.Matching.VideoMedia.FFmpegTimeout.Value(),
 		)
 		if err != nil {
 			log.Panic(err)
 		}
-		defer func() {
-			if err := videoLikeMatcher.Close(); err != nil {
-				log.Printf("[ERROR]: %s", err)
-			}
-		}()
-		matchers = append(matchers, videoLikeMatcher)
+		aiVectorMatcher, err := aivector.NewMatcher(aivector.Options{
+			Downloader:     mediaDownloader,
+			ImageExtractor: mediaExtractor,
+			VideoExtractor: aiVectorExtractor,
+			Client:         aiVectorClient,
+			Threshold:      cfg.Matching.AIVector.Threshold,
+			TopK:           cfg.Matching.AIVector.TopK,
+			Plan: domain.MediaExtractionPlan{
+				MaxFrames:    cfg.Matching.VideoMedia.MaxFrames,
+				TargetWidth:  cfg.Matching.VideoMedia.TargetWidth,
+				TargetHeight: cfg.Matching.VideoMedia.TargetHeight,
+			},
+			Limits: aivector.Limits{
+				MaxAnimationDuration:    cfg.Matching.VideoMedia.MaxAnimationDuration.Value(),
+				MaxVideoStickerDuration: cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value(),
+				MaxAnimationSize:        cfg.Matching.VideoMedia.MaxAnimationSize.Bytes(),
+				MaxVideoStickerSize:     cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes(),
+			},
+			Rule: aivector.MatchRule{
+				MinMatchedFrames: cfg.Matching.VideoMatch.MinMatchedFrames,
+				MinMatchedRatio:  cfg.Matching.VideoMatch.MinMatchedRatio,
+			},
+		})
+		if err != nil {
+			log.Panic(err)
+		}
+		matchers = append(matchers, aiVectorMatcher)
 	}
 
 	contentMatcher, err := composite.NewMatcher(matchers...)
@@ -148,7 +191,7 @@ func main() {
 	}
 
 	if cfg.Health.Enabled {
-		healthServer, err := startHealthServer(ctx, cfg.Health.Address)
+		healthServer, err := startHealthServer(ctx, cfg.Health.Address())
 		if err != nil {
 			log.Panic(err)
 		}

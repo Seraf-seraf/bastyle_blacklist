@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -13,8 +14,8 @@ import (
 )
 
 const (
-	maxVideoLikeFrames          = 20
-	maxVideoLikeTargetDimension = 1024
+	maxVideoMediaFrames          = 20
+	maxVideoMediaTargetDimension = 1024
 )
 
 type Config struct {
@@ -39,13 +40,17 @@ type HTTPClient struct {
 
 type Health struct {
 	Enabled bool   `yaml:"enabled"`
-	Address string `yaml:"address"`
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port"`
 }
 
 type Matching struct {
-	Exact     Exact     `yaml:"exact"`
-	ImageHash ImageHash `yaml:"image_hash"`
-	VideoLike VideoLike `yaml:"video_like"`
+	Exact      Exact      `yaml:"exact"`
+	ImageHash  ImageHash  `yaml:"image_hash"`
+	VideoMedia VideoMedia `yaml:"video_media"`
+	VideoMatch VideoMatch `yaml:"video_match"`
+	VideoLike  VideoLike  `yaml:"video_like"`
+	AIVector   AIVector   `yaml:"ai_vector"`
 }
 
 type Exact struct {
@@ -59,21 +64,54 @@ type ImageHash struct {
 }
 
 type VideoLike struct {
-	Enabled                 bool     `yaml:"enabled"`
+	DBPath    string `yaml:"db_path"`
+	Threshold int    `yaml:"threshold"`
+	Buffer    int    `yaml:"buffer"`
+}
+
+type VideoMatch struct {
+	MinMatchedFrames int     `yaml:"min_matched_frames"`
+	MinMatchedRatio  float64 `yaml:"min_matched_ratio"`
+}
+
+type AIVector struct {
+	Enabled        bool            `yaml:"enabled"`
+	ModelName      string          `yaml:"model_name"`
+	ModelRevision  string          `yaml:"model_revision"`
+	Device         string          `yaml:"device"`
+	DBPath         string          `yaml:"db_path"`
+	IndexPath      string          `yaml:"index_path"`
+	MaxFiles       int             `yaml:"max_files"`
+	Threshold      float64         `yaml:"threshold"`
+	TopK           int             `yaml:"top_k"`
+	RequestTimeout Duration        `yaml:"request_timeout"`
+	Service        AIVectorService `yaml:"service"`
+	HNSW           HNSW            `yaml:"hnsw"`
+}
+
+type AIVectorService struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
+}
+
+type VideoMedia struct {
+	MaxFrames               int      `yaml:"max_frames"`
+	TargetWidth             int      `yaml:"target_width"`
+	TargetHeight            int      `yaml:"target_height"`
+	MaxUploadBytes          int64    `yaml:"max_upload_bytes"`
+	MaxImagePixels          int64    `yaml:"max_image_pixels"`
 	MaxAnimationDuration    Duration `yaml:"max_animation_duration"`
 	MaxVideoStickerDuration Duration `yaml:"max_video_sticker_duration"`
 	MaxAnimationSize        ByteSize `yaml:"max_animation_size"`
 	MaxVideoStickerSize     ByteSize `yaml:"max_video_sticker_size"`
-	DBPath                  string   `yaml:"db_path"`
-	Threshold               int      `yaml:"threshold"`
-	Buffer                  int      `yaml:"buffer"`
-	MinMatchedFrames        int      `yaml:"min_matched_frames"`
-	MinMatchedRatio         float64  `yaml:"min_matched_ratio"`
-	MaxFrames               int      `yaml:"max_frames"`
-	TargetWidth             int      `yaml:"target_width"`
-	TargetHeight            int      `yaml:"target_height"`
 	FFmpegBinary            string   `yaml:"ffmpeg_binary"`
 	FFmpegTimeout           Duration `yaml:"ffmpeg_timeout"`
+}
+
+type HNSW struct {
+	M              int `yaml:"m"`
+	EFConstruction int `yaml:"ef_construction"`
+	EFSearch       int `yaml:"ef_search"`
 }
 
 type Duration time.Duration
@@ -93,8 +131,8 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func (d Duration) Value() time.Duration {
-	return time.Duration(d)
+func (d *Duration) Value() time.Duration {
+	return time.Duration(*d)
 }
 
 type ByteSize int64
@@ -114,8 +152,16 @@ func (s *ByteSize) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func (s ByteSize) Bytes() int64 {
-	return int64(s)
+func (s *ByteSize) Bytes() int64 {
+	return int64(*s)
+}
+
+func (h Health) Address() string {
+	return net.JoinHostPort(h.Host, strconv.Itoa(h.Port))
+}
+
+func (s AIVectorService) URL() string {
+	return "http://" + net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 }
 
 func Load(path string) (Config, error) {
@@ -147,7 +193,8 @@ func defaultConfig() Config {
 		Workers: 5,
 		Health: Health{
 			Enabled: true,
-			Address: "127.0.0.1:8081",
+			Host:    "127.0.0.1",
+			Port:    8081,
 		},
 		JobsBuffer: 100,
 		Matching: Matching{
@@ -159,24 +206,54 @@ func defaultConfig() Config {
 				Threshold: 12,
 				Buffer:    500,
 			},
+			VideoMedia: defaultVideoMedia(),
+			VideoMatch: VideoMatch{
+				MinMatchedFrames: 2,
+				MinMatchedRatio:  0.4,
+			},
 			VideoLike: VideoLike{
-				Enabled:                 true,
-				MaxAnimationDuration:    Duration(10 * time.Second),
-				MaxVideoStickerDuration: Duration(3 * time.Second),
-				MaxAnimationSize:        ByteSize(20 << 20),
-				MaxVideoStickerSize:     ByteSize(256 << 10),
-				DBPath:                  "bastyle.sqlite",
-				Threshold:               12,
-				Buffer:                  500,
-				MinMatchedFrames:        2,
-				MinMatchedRatio:         0.4,
-				MaxFrames:               10,
-				TargetWidth:             320,
-				TargetHeight:            320,
-				FFmpegBinary:            "ffmpeg",
-				FFmpegTimeout:           Duration(10 * time.Second),
+				DBPath:    "bastyle.sqlite",
+				Threshold: 12,
+				Buffer:    500,
+			},
+			AIVector: AIVector{
+				Enabled:        false,
+				ModelName:      "nomic-ai/nomic-embed-vision-v1.5",
+				ModelRevision:  "e3a725bce72db07ca4adb1d83da08903f3ee02f8",
+				Device:         "cpu",
+				DBPath:         "bastyle.sqlite",
+				IndexPath:      "faiss-image.index",
+				MaxFiles:       10,
+				Threshold:      0.92,
+				TopK:           5,
+				RequestTimeout: Duration(10 * time.Second),
+				Service: AIVectorService{
+					Host: "127.0.0.1",
+					Port: 8080,
+				},
+				HNSW: HNSW{
+					M:              32,
+					EFConstruction: 80,
+					EFSearch:       64,
+				},
 			},
 		},
+	}
+}
+
+func defaultVideoMedia() VideoMedia {
+	return VideoMedia{
+		MaxFrames:               10,
+		TargetWidth:             320,
+		TargetHeight:            320,
+		MaxUploadBytes:          20 << 20,
+		MaxImagePixels:          4096 * 4096,
+		MaxAnimationDuration:    Duration(10 * time.Second),
+		MaxVideoStickerDuration: Duration(3 * time.Second),
+		MaxAnimationSize:        ByteSize(20 << 20),
+		MaxVideoStickerSize:     ByteSize(256 << 10),
+		FFmpegBinary:            "ffmpeg",
+		FFmpegTimeout:           Duration(10 * time.Second),
 	}
 }
 
@@ -200,11 +277,11 @@ func (c Config) validate() error {
 		return errors.New("workers must be positive")
 	}
 	if c.Health.Enabled {
-		if c.Health.Address == "" {
-			return errors.New("health address is required")
+		if c.Health.Host == "" {
+			return errors.New("health host is required")
 		}
-		if _, _, err := net.SplitHostPort(c.Health.Address); err != nil {
-			return err
+		if c.Health.Port <= 0 {
+			return errors.New("health port must be positive")
 		}
 	}
 	if c.JobsBuffer <= 0 {
@@ -222,20 +299,14 @@ func (c Config) validate() error {
 	if c.Matching.ImageHash.Buffer <= 0 {
 		return errors.New("image hash buffer must be positive")
 	}
-	if !c.Matching.VideoLike.Enabled {
-		return nil
+	if err := c.Matching.VideoMedia.validate("video media"); err != nil {
+		return err
 	}
-	if c.Matching.VideoLike.MaxAnimationDuration.Value() <= 0 {
-		return errors.New("video like max animation duration must be positive")
+	if err := c.Matching.VideoMatch.validate("video match"); err != nil {
+		return err
 	}
-	if c.Matching.VideoLike.MaxVideoStickerDuration.Value() <= 0 {
-		return errors.New("video like max video sticker duration must be positive")
-	}
-	if c.Matching.VideoLike.MaxAnimationSize.Bytes() <= 0 {
-		return errors.New("video like max animation size must be positive")
-	}
-	if c.Matching.VideoLike.MaxVideoStickerSize.Bytes() <= 0 {
-		return errors.New("video like max video sticker size must be positive")
+	if err := c.Matching.AIVector.validate(); err != nil {
+		return err
 	}
 	if c.Matching.VideoLike.DBPath == "" {
 		return errors.New("video like db path is required")
@@ -246,35 +317,112 @@ func (c Config) validate() error {
 	if c.Matching.VideoLike.Buffer <= 0 {
 		return errors.New("video like buffer must be positive")
 	}
-	if c.Matching.VideoLike.MinMatchedFrames <= 0 {
-		return errors.New("video like min matched frames must be positive")
+	return nil
+}
+
+func (c AIVector) validate() error {
+	if !c.Enabled {
+		return nil
 	}
-	if c.Matching.VideoLike.MinMatchedRatio <= 0 || c.Matching.VideoLike.MinMatchedRatio > 1 {
-		return errors.New("video like min matched ratio must be between 0 and 1")
+	if c.ModelName == "" {
+		return errors.New("ai vector model name is required")
 	}
-	if c.Matching.VideoLike.MaxFrames <= 0 {
-		return errors.New("video like max frames must be positive")
+	if c.ModelRevision == "" {
+		return errors.New("ai vector model revision is required")
 	}
-	if c.Matching.VideoLike.MaxFrames > maxVideoLikeFrames {
-		return errors.New("video like max frames is too large")
+	if c.Device == "" {
+		return errors.New("ai vector device is required")
 	}
-	if c.Matching.VideoLike.TargetWidth <= 0 {
-		return errors.New("video like target width must be positive")
+	if c.DBPath == "" {
+		return errors.New("ai vector db path is required")
 	}
-	if c.Matching.VideoLike.TargetWidth > maxVideoLikeTargetDimension {
-		return errors.New("video like target width is too large")
+	if c.IndexPath == "" {
+		return errors.New("ai vector index path is required")
 	}
-	if c.Matching.VideoLike.TargetHeight <= 0 {
-		return errors.New("video like target height must be positive")
+	if c.MaxFiles <= 0 {
+		return errors.New("ai vector max files must be positive")
 	}
-	if c.Matching.VideoLike.TargetHeight > maxVideoLikeTargetDimension {
-		return errors.New("video like target height is too large")
+	if c.Threshold < 0 || c.Threshold > 1 {
+		return errors.New("ai vector threshold must be between 0 and 1")
 	}
-	if c.Matching.VideoLike.FFmpegBinary == "" {
-		return errors.New("video like ffmpeg binary is required")
+	if c.TopK <= 0 {
+		return errors.New("ai vector top k must be positive")
 	}
-	if c.Matching.VideoLike.FFmpegTimeout.Value() <= 0 {
-		return errors.New("video like ffmpeg timeout must be positive")
+	if c.RequestTimeout.Value() <= 0 {
+		return errors.New("ai vector request timeout must be positive")
+	}
+	if c.Service.Host == "" {
+		return errors.New("ai vector service host is required")
+	}
+	if c.Service.Port <= 0 {
+		return errors.New("ai vector service port must be positive")
+	}
+	if c.HNSW.M <= 0 {
+		return errors.New("ai vector hnsw m must be positive")
+	}
+	if c.HNSW.EFConstruction <= 0 {
+		return errors.New("ai vector hnsw ef construction must be positive")
+	}
+	if c.HNSW.EFSearch <= 0 {
+		return errors.New("ai vector hnsw ef search must be positive")
+	}
+
+	return nil
+}
+
+func (c VideoMatch) validate(prefix string) error {
+	if c.MinMatchedFrames <= 0 {
+		return errors.New(prefix + " min matched frames must be positive")
+	}
+	if c.MinMatchedRatio <= 0 || c.MinMatchedRatio > 1 {
+		return errors.New(prefix + " min matched ratio must be between 0 and 1")
+	}
+
+	return nil
+}
+
+func (c VideoMedia) validate(prefix string) error {
+	if c.MaxFrames <= 0 {
+		return errors.New(prefix + " max frames must be positive")
+	}
+	if c.MaxFrames > maxVideoMediaFrames {
+		return errors.New(prefix + " max frames is too large")
+	}
+	if c.TargetWidth <= 0 {
+		return errors.New(prefix + " target width must be positive")
+	}
+	if c.TargetWidth > maxVideoMediaTargetDimension {
+		return errors.New(prefix + " target width is too large")
+	}
+	if c.TargetHeight <= 0 {
+		return errors.New(prefix + " target height must be positive")
+	}
+	if c.TargetHeight > maxVideoMediaTargetDimension {
+		return errors.New(prefix + " target height is too large")
+	}
+	if c.MaxUploadBytes <= 0 {
+		return errors.New(prefix + " max upload bytes must be positive")
+	}
+	if c.MaxImagePixels <= 0 {
+		return errors.New(prefix + " max image pixels must be positive")
+	}
+	if c.MaxAnimationDuration.Value() <= 0 {
+		return errors.New(prefix + " max animation duration must be positive")
+	}
+	if c.MaxVideoStickerDuration.Value() <= 0 {
+		return errors.New(prefix + " max video sticker duration must be positive")
+	}
+	if c.MaxAnimationSize.Bytes() <= 0 {
+		return errors.New(prefix + " max animation size must be positive")
+	}
+	if c.MaxVideoStickerSize.Bytes() <= 0 {
+		return errors.New(prefix + " max video sticker size must be positive")
+	}
+	if c.FFmpegBinary == "" {
+		return errors.New(prefix + " ffmpeg binary is required")
+	}
+	if c.FFmpegTimeout.Value() <= 0 {
+		return errors.New(prefix + " ffmpeg timeout must be positive")
 	}
 
 	return nil

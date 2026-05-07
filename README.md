@@ -27,12 +27,13 @@
 - exact-match по Telegram `file_unique_id`;
 - perceptual hash matching для фото и статичных стикеров;
 - video-like matching для Telegram animations и video stickers;
+- AI vector matching для визуально похожих изображений и кадров;
 - извлечение кадров через FFmpeg для GIF/video-like контента;
 - SQLite-хранилище fingerprints;
 - проверка прав администратора перед `/ban`;
 - автоматическое удаление заблокированных сообщений;
 - настройка лимитов для animation/video sticker обработки;
-- отключаемый `video_like` matcher через YAML config.
+- отключаемый `ai_vector` matcher через YAML config.
 
 ## Ограничения бота
 
@@ -45,7 +46,9 @@
 
 - Go `1.25.4` или совместимая версия;
 - Telegram bot token от `@BotFather`;
-- FFmpeg, если включен `matching.video_like.enabled`;
+- FFmpeg для video-like matching и AI vector matching кадров;
+- Python service dependencies из `ai_vector_service/requirements.txt`, если включен
+  `matching.ai_vector.enabled`;
 - доступ на запись к SQLite-файлу;
 - бот добавлен в группу администратором;
 - у бота есть право удалять сообщения.
@@ -123,6 +126,11 @@ telegram:
 workers: 5
 jobs_buffer: 100
 
+health:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8081
+
 matching:
   exact:
     buffer: 500
@@ -132,22 +140,46 @@ matching:
     threshold: 12
     buffer: 500
 
-  video_like:
-    enabled: true
+  video_media:
     max_animation_duration: 10s
     max_video_sticker_duration: 3s
     max_animation_size: 20MiB
     max_video_sticker_size: 256KiB
-    db_path: "bastyle.sqlite"
-    threshold: 12
-    buffer: 500
-    min_matched_frames: 2
-    min_matched_ratio: 0.4
     max_frames: 10
     target_width: 320
     target_height: 320
+    max_upload_bytes: 20971520
+    max_image_pixels: 16777216
     ffmpeg_binary: ffmpeg
     ffmpeg_timeout: 10s
+
+  video_match:
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
+
+  video_like:
+    db_path: "bastyle.sqlite"
+    threshold: 12
+    buffer: 500
+
+  ai_vector:
+    enabled: false
+    model_name: "nomic-ai/nomic-embed-vision-v1.5"
+    model_revision: "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
+    device: "cpu"
+    db_path: "bastyle.sqlite"
+    index_path: "faiss-image.index"
+    max_files: 10
+    threshold: 0.92
+    top_k: 5
+    request_timeout: 10s
+    service:
+      host: "bastyle-ai-vector"
+      port: 8080
+    hnsw:
+      m: 32
+      ef_construction: 80
+      ef_search: 64
 ```
 
 ### Основные Параметры
@@ -160,22 +192,27 @@ matching:
 
 `workers` - количество worker'ов для обработки сообщений.
 `jobs_buffer` - размер очереди сообщений.
+`health.enabled` - включает HTTP health endpoint.
+`health.host` и `health.port` - host/port для health endpoint.
 
 `matching.exact.buffer` - стартовый размер черного списка по `file_unique_id` в памяти приложения.
 `matching.image_hash.db_path` - SQLite-файл для хэшей картинок.
 `matching.image_hash.threshold` - максимальная Hamming distance для похожих изображений.
-`matching.video_like.enabled` - включает или отключает video-like matcher.
+`matching.video_media.*` - общие лимиты и FFmpeg-настройки для кадров, которые
+используют `video_like` и `ai_vector`.
+`matching.video_match.min_matched_frames` - минимальное количество совпавших
+кадров для video-like медиа.
+`matching.video_match.min_matched_ratio` - минимальная доля совпавших кадров.
 `matching.video_like.db_path` - SQLite-файл для video-like отпечатков.
-`matching.video_like.min_matched_frames` - минимальное количество совпавших
-кадров. Значение больше `1` защищает от false positive по одному похожему кадру.
-`matching.video_like.min_matched_ratio` - минимальная доля совпавших кадров.
-`matching.video_like.max_animation_duration` и
-`matching.video_like.max_video_sticker_duration` - лимиты длительности перед
-скачиванием/обработкой.
-`matching.video_like.max_animation_size` и
-`matching.video_like.max_video_sticker_size` - лимиты размера.
-`matching.video_like.ffmpeg_binary` - имя бинарника или полный путь до FFmpeg.
-`matching.video_like.ffmpeg_timeout` - timeout на извлечение кадров.
+`matching.ai_vector.enabled` - включает или отключает AI vector matcher.
+`matching.ai_vector.db_path` - SQLite-файл для AI-vector ban'ов.
+`matching.ai_vector.index_path` - файл Faiss HNSW индекса.
+`matching.ai_vector.threshold` - минимальный cosine similarity score.
+`matching.ai_vector.top_k` - сколько ближайших векторов запрашивать у AI service.
+`matching.ai_vector.service.host` и `matching.ai_vector.service.port` - host/port
+AI vector service.
+`matching.ai_vector.hnsw.m`, `ef_construction`, `ef_search` - параметры HNSW
+индекса Faiss.
 
 ## Запуск
 
@@ -236,6 +273,9 @@ matching:
     db_path: "/var/lib/bastyle/bastyle.sqlite"
   video_like:
     db_path: "/var/lib/bastyle/bastyle.sqlite"
+  ai_vector:
+    db_path: "/var/lib/bastyle/bastyle.sqlite"
+    index_path: "/var/lib/bastyle/faiss-image.index"
 ```
 
 ## Docker Compose
@@ -282,6 +322,9 @@ matching:
     db_path: "/var/lib/bastyle/bastyle.sqlite"
   video_like:
     db_path: "/var/lib/bastyle/bastyle.sqlite"
+  ai_vector:
+    db_path: "/var/lib/bastyle/bastyle.sqlite"
+    index_path: "/var/lib/bastyle/faiss-image.index"
 ```
 
 Установка unit-файла:
