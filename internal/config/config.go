@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"errors"
+	"net"
 	"net/url"
 	"os"
 	"time"
@@ -19,6 +20,7 @@ const (
 type Config struct {
 	Telegram Telegram `yaml:"telegram"`
 	Workers  int      `yaml:"workers"`
+	Health   Health   `yaml:"health"`
 
 	JobsBuffer int      `yaml:"jobs_buffer"`
 	Matching   Matching `yaml:"matching"`
@@ -33,6 +35,11 @@ type Telegram struct {
 type HTTPClient struct {
 	Enabled  bool   `yaml:"enabled"`
 	ProxyURL string `yaml:"proxy_url"`
+}
+
+type Health struct {
+	Enabled bool   `yaml:"enabled"`
+	Address string `yaml:"address"`
 }
 
 type Matching struct {
@@ -137,7 +144,11 @@ func defaultConfig() Config {
 		Telegram: Telegram{
 			UpdateTimeoutSeconds: 60,
 		},
-		Workers:    5,
+		Workers: 5,
+		Health: Health{
+			Enabled: true,
+			Address: "127.0.0.1:8081",
+		},
 		JobsBuffer: 100,
 		Matching: Matching{
 			Exact: Exact{
@@ -187,6 +198,14 @@ func (c Config) validate() error {
 	}
 	if c.Workers <= 0 {
 		return errors.New("workers must be positive")
+	}
+	if c.Health.Enabled {
+		if c.Health.Address == "" {
+			return errors.New("health address is required")
+		}
+		if _, _, err := net.SplitHostPort(c.Health.Address); err != nil {
+			return err
+		}
 	}
 	if c.JobsBuffer <= 0 {
 		return errors.New("jobs buffer must be positive")

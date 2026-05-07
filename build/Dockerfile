@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bastyle
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+	&& apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
 	&& rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin/nologin bastyle \

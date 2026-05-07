@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/httpclient"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
@@ -143,6 +147,20 @@ func main() {
 		log.Panic(err)
 	}
 
+	if cfg.Health.Enabled {
+		healthServer, err := startHealthServer(ctx, cfg.Health.Address)
+		if err != nil {
+			log.Panic(err)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := healthServer.Shutdown(shutdownCtx); err != nil {
+				log.Printf("[ERROR]: %s", err)
+			}
+		}()
+	}
+
 	jobs := make(chan Job, cfg.JobsBuffer)
 	var wg sync.WaitGroup
 
@@ -161,6 +179,43 @@ func main() {
 	close(jobs)
 	wg.Wait()
 	log.Println("Shutdown complete")
+}
+
+func startHealthServer(ctx context.Context, address string) (*http.Server, error) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+
+	server := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 2 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("[ERROR]: %s", err)
+		}
+	}()
+
+	go func() {
+		log.Printf("Health server listening on %s", address)
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("[ERROR]: %s", err)
+		}
+	}()
+
+	return server, nil
 }
 
 func newTelegramBot(cfg config.Config) (*tgbotapi.BotAPI, error) {

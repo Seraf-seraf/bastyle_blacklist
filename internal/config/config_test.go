@@ -16,6 +16,9 @@ telegram:
     enabled: true
     proxy_url: "http://127.0.0.1:8080"
 workers: 3
+health:
+  enabled: true
+  address: "127.0.0.1:18081"
 jobs_buffer: 20
 matching:
   exact:
@@ -61,6 +64,12 @@ matching:
 	}
 	if cfg.Workers != 3 {
 		t.Fatalf("unexpected workers: %d", cfg.Workers)
+	}
+	if !cfg.Health.Enabled {
+		t.Fatal("expected health to be enabled")
+	}
+	if cfg.Health.Address != "127.0.0.1:18081" {
+		t.Fatalf("unexpected health address: %q", cfg.Health.Address)
 	}
 	if cfg.JobsBuffer != 20 {
 		t.Fatalf("unexpected jobs buffer: %d", cfg.JobsBuffer)
@@ -143,6 +152,12 @@ matching:
 	}
 	if cfg.JobsBuffer != 100 {
 		t.Fatalf("unexpected default jobs buffer: %d", cfg.JobsBuffer)
+	}
+	if !cfg.Health.Enabled {
+		t.Fatal("expected default health to be enabled")
+	}
+	if cfg.Health.Address != "127.0.0.1:8081" {
+		t.Fatalf("unexpected default health address: %q", cfg.Health.Address)
 	}
 	if cfg.Matching.ImageHash.Threshold != 12 {
 		t.Fatalf("unexpected default image hash threshold: %d", cfg.Matching.ImageHash.Threshold)
