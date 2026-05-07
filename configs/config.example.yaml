@@ -34,3 +34,17 @@ matching:
     target_height: 320
     ffmpeg_binary: ffmpeg
     ffmpeg_timeout: 10s
+  ai_vector:
+    enabled: false
+    model_name: "nomic-ai/nomic-embed-vision-v1.5"
+    model_revision: "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
+    device: "cpu"
+    max_files: 10
+    max_upload_bytes: 20971520
+    max_image_pixels: 16777216
+    target_width: 320
+    target_height: 320
+    threshold: 0.92
+    service:
+      host: "0.0.0.0"
+      port: 8080

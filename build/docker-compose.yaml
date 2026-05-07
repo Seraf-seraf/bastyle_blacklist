@@ -1,0 +1,45 @@
+services:
+  bastyle-blacklist:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+    image: bastyle-blacklist:local
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - ./configs/config.yaml:/etc/bastyle/config.yaml:ro
+      - bastyle-data:/var/lib/bastyle
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  bastyle-ai-vector:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.ai-vector
+    image: bastyle-ai-vector:local
+    restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - bastyle-data:/var/lib/bastyle
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  bastyle-data:
