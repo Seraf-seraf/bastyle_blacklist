@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -135,6 +136,8 @@ def test_sqlite_vector_store_saves_index_state(tmp_path: Path):
         index_type="hnsw-flat-ip",
         index_path="/var/lib/bastyle/faiss-image.index",
         active_vectors_count=10,
+        active_vectors_hash="active-vectors-hash",
+        index_file_sha256="index-file-sha256",
         rebuilt_at="2026-05-08T10:00:00Z",
     )
 
@@ -155,6 +158,8 @@ def test_sqlite_vector_store_saves_index_state(tmp_path: Path):
         index_type=state.index_type,
         index_path=state.index_path,
         active_vectors_count=12,
+        active_vectors_hash="updated-active-vectors-hash",
+        index_file_sha256="updated-index-file-sha256",
         rebuilt_at="2026-05-08T11:00:00Z",
     )
     store.save_index_state(updated)
@@ -165,6 +170,46 @@ def test_sqlite_vector_store_saves_index_state(tmp_path: Path):
         vector_dim=3,
         index_type="hnsw-flat-ip",
     ) == updated
+
+
+def test_sqlite_vector_store_migrates_index_state_integrity_columns(tmp_path: Path):
+    db_path = tmp_path / "vectors.sqlite"
+    with sqlite3.connect(db_path) as db:
+        db.executescript(
+            """
+CREATE TABLE ai_vector_index_state (
+    model_name TEXT NOT NULL,
+    model_revision TEXT NOT NULL,
+    vector_dim INTEGER NOT NULL,
+    index_type TEXT NOT NULL,
+    index_path TEXT NOT NULL,
+    active_vectors_count INTEGER NOT NULL,
+    rebuilt_at TEXT NOT NULL,
+    PRIMARY KEY (model_name, model_revision, vector_dim, index_type)
+);
+
+INSERT INTO ai_vector_index_state (
+    model_name, model_revision, vector_dim, index_type, index_path,
+    active_vectors_count, rebuilt_at
+)
+VALUES (
+    'test-model', 'test-revision', 3, 'hnsw-flat-ip',
+    '/var/lib/bastyle/faiss-image.index', 10, '2026-05-08T10:00:00Z'
+);
+"""
+        )
+
+    store = SQLiteVectorStore(db_path)
+    state = store.load_index_state(
+        model_name="test-model",
+        model_revision="test-revision",
+        vector_dim=3,
+        index_type="hnsw-flat-ip",
+    )
+
+    assert state is not None
+    assert state.active_vectors_hash == ""
+    assert state.index_file_sha256 == ""
 
 
 def test_sqlite_vector_store_rejects_invalid_vectors(tmp_path: Path):

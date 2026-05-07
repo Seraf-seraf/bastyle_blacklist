@@ -16,6 +16,8 @@ class Settings:
     model_name: str
     model_revision: str
     device: str
+    db_path: str
+    index_path: str
     max_files: int
     max_upload_bytes: int
     max_image_pixels: int
@@ -37,6 +39,8 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         model_name=str(ai_vector.get("model_name", DEFAULT_MODEL_NAME)),
         model_revision=str(ai_vector.get("model_revision", DEFAULT_MODEL_REVISION)),
         device=str(ai_vector.get("device", "cpu")),
+        db_path=str(ai_vector.get("db_path", "bastyle.sqlite")),
+        index_path=str(ai_vector.get("index_path", "faiss-image.index")),
         max_files=int(ai_vector.get("max_files", 10)),
         max_upload_bytes=int(ai_vector.get("max_upload_bytes", 20 * 1024 * 1024)),
         max_image_pixels=int(ai_vector.get("max_image_pixels", 4096 * 4096)),

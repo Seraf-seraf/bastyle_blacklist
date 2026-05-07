@@ -39,6 +39,8 @@ matching:
     model_name: "nomic-ai/nomic-embed-vision-v1.5"
     model_revision: "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
     device: "cpu"
+    db_path: "bastyle.sqlite"
+    index_path: "faiss-image.index"
     max_files: 10
     max_upload_bytes: 20971520
     max_image_pixels: 16777216

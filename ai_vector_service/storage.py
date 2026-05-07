@@ -43,6 +43,8 @@ class IndexState:
     index_type: str
     index_path: str
     active_vectors_count: int
+    active_vectors_hash: str
+    index_file_sha256: str
     rebuilt_at: str
 
 
@@ -175,12 +177,14 @@ WHERE b.active = 1
                 """
 INSERT INTO ai_vector_index_state (
     model_name, model_revision, vector_dim, index_type, index_path,
-    active_vectors_count, rebuilt_at
+    active_vectors_count, active_vectors_hash, index_file_sha256, rebuilt_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(model_name, model_revision, vector_dim, index_type) DO UPDATE SET
     index_path = excluded.index_path,
     active_vectors_count = excluded.active_vectors_count,
+    active_vectors_hash = excluded.active_vectors_hash,
+    index_file_sha256 = excluded.index_file_sha256,
     rebuilt_at = excluded.rebuilt_at
 """,
                 (
@@ -190,6 +194,8 @@ ON CONFLICT(model_name, model_revision, vector_dim, index_type) DO UPDATE SET
                     state.index_type,
                     state.index_path,
                     state.active_vectors_count,
+                    state.active_vectors_hash,
+                    state.index_file_sha256,
                     state.rebuilt_at,
                 ),
             )
@@ -205,7 +211,7 @@ ON CONFLICT(model_name, model_revision, vector_dim, index_type) DO UPDATE SET
         row = self._db.execute(
             """
 SELECT model_name, model_revision, vector_dim, index_type, index_path,
-       active_vectors_count, rebuilt_at
+       active_vectors_count, active_vectors_hash, index_file_sha256, rebuilt_at
 FROM ai_vector_index_state
 WHERE model_name = ? AND model_revision = ? AND vector_dim = ? AND index_type = ?
 """,
@@ -222,6 +228,8 @@ WHERE model_name = ? AND model_revision = ? AND vector_dim = ? AND index_type = 
             index_type=str(row["index_type"]),
             index_path=str(row["index_path"]),
             active_vectors_count=int(row["active_vectors_count"]),
+            active_vectors_hash=str(row["active_vectors_hash"]),
+            index_file_sha256=str(row["index_file_sha256"]),
             rebuilt_at=str(row["rebuilt_at"]),
         )
 
@@ -262,6 +270,8 @@ CREATE TABLE IF NOT EXISTS ai_vector_index_state (
     index_type TEXT NOT NULL,
     index_path TEXT NOT NULL,
     active_vectors_count INTEGER NOT NULL,
+    active_vectors_hash TEXT NOT NULL DEFAULT '',
+    index_file_sha256 TEXT NOT NULL DEFAULT '',
     rebuilt_at TEXT NOT NULL,
     PRIMARY KEY (model_name, model_revision, vector_dim, index_type)
 );
@@ -273,6 +283,22 @@ CREATE INDEX IF NOT EXISTS ai_vector_frame_ban_idx
 ON ai_vector_frame(ban_id, frame_index);
 """
         )
+        self._ensure_index_state_columns()
+
+    def _ensure_index_state_columns(self) -> None:
+        rows = self._db.execute("PRAGMA table_info(ai_vector_index_state)").fetchall()
+        columns = {str(row["name"]) for row in rows}
+
+        if "active_vectors_hash" not in columns:
+            self._db.execute(
+                "ALTER TABLE ai_vector_index_state "
+                "ADD COLUMN active_vectors_hash TEXT NOT NULL DEFAULT ''"
+            )
+        if "index_file_sha256" not in columns:
+            self._db.execute(
+                "ALTER TABLE ai_vector_index_state "
+                "ADD COLUMN index_file_sha256 TEXT NOT NULL DEFAULT ''"
+            )
 
     def _validate_ban(
         self,
