@@ -131,6 +131,19 @@ health:
   host: "127.0.0.1"
   port: 8081
 
+media_config:
+  max_animation_duration: 10s
+  max_video_sticker_duration: 3s
+  max_animation_size: 20MiB
+  max_video_sticker_size: 256KiB
+  max_frames: 10
+  target_width: 320
+  target_height: 320
+  max_upload_bytes: 20MiB
+  max_image_pixels: 16777216
+  ffmpeg_binary: ffmpeg
+  ffmpeg_timeout: 10s
+
 matching:
   exact:
     buffer: 500
@@ -139,19 +152,6 @@ matching:
     db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
-
-  video_media:
-    max_animation_duration: 10s
-    max_video_sticker_duration: 3s
-    max_animation_size: 20MiB
-    max_video_sticker_size: 256KiB
-    max_frames: 10
-    target_width: 320
-    target_height: 320
-    max_upload_bytes: 20MiB
-    max_image_pixels: 16777216
-    ffmpeg_binary: ffmpeg
-    ffmpeg_timeout: 10s
 
   video_like:
     db_path: "bastyle.sqlite"
@@ -198,8 +198,8 @@ matching:
 `matching.exact.buffer` - стартовый размер черного списка по `file_unique_id` в памяти приложения.
 `matching.image_hash.db_path` - SQLite-файл для хэшей картинок.
 `matching.image_hash.threshold` - максимальная Hamming distance для похожих изображений.
-`matching.video_media.*` - общие лимиты и FFmpeg-настройки для кадров, которые
-используют `video_like` и `ai_vector`.
+`media_config.*` - общие лимиты и FFmpeg-настройки для кадров, которые
+используют matchers `video_like` и `ai_vector`.
 `matching.video_like.db_path` - SQLite-файл для video-like отпечатков.
 `matching.video_like.min_matched_frames` и `min_matched_ratio` - правило
 совпадения кадров для video-like hash matcher-а.

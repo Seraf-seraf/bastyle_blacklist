@@ -13,9 +13,8 @@ def test_load_settings_reads_max_upload_bytes_as_size(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """
-matching:
-  video_media:
-    max_upload_bytes: 20MiB
+media_config:
+  max_upload_bytes: 20MiB
 """,
         encoding="utf-8",
     )

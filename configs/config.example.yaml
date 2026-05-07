@@ -13,6 +13,19 @@ health:
   host: "127.0.0.1"
   port: 8081
 
+media_config:
+  max_animation_duration: 10s
+  max_video_sticker_duration: 3s
+  max_animation_size: 20MiB
+  max_video_sticker_size: 256KiB
+  max_frames: 10
+  target_width: 320
+  target_height: 320
+  max_upload_bytes: 20MiB
+  max_image_pixels: 16777216
+  ffmpeg_binary: ffmpeg
+  ffmpeg_timeout: 10s
+
 matching:
   exact:
     buffer: 500
@@ -20,18 +33,6 @@ matching:
     db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
-  video_media:
-    max_animation_duration: 10s
-    max_video_sticker_duration: 3s
-    max_animation_size: 20MiB
-    max_video_sticker_size: 256KiB
-    max_frames: 10
-    target_width: 320
-    target_height: 320
-    max_upload_bytes: 20MiB
-    max_image_pixels: 16777216
-    ffmpeg_binary: ffmpeg
-    ffmpeg_timeout: 10s
   video_like:
     db_path: "bastyle.sqlite"
     threshold: 12

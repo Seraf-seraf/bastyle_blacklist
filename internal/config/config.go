@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	maxVideoMediaFrames          = 20
-	maxVideoMediaTargetDimension = 1024
+	maxMediaConfigFrames          = 20
+	maxMediaConfigTargetDimension = 1024
 )
 
 type Config struct {
@@ -23,8 +23,9 @@ type Config struct {
 	Workers  int      `yaml:"workers"`
 	Health   Health   `yaml:"health"`
 
-	JobsBuffer int      `yaml:"jobs_buffer"`
-	Matching   Matching `yaml:"matching"`
+	JobsBuffer  int         `yaml:"jobs_buffer"`
+	MediaConfig MediaConfig `yaml:"media_config"`
+	Matching    Matching    `yaml:"matching"`
 }
 
 type Telegram struct {
@@ -45,11 +46,10 @@ type Health struct {
 }
 
 type Matching struct {
-	Exact      Exact      `yaml:"exact"`
-	ImageHash  ImageHash  `yaml:"image_hash"`
-	VideoMedia VideoMedia `yaml:"video_media"`
-	VideoLike  VideoLike  `yaml:"video_like"`
-	AIVector   AIVector   `yaml:"ai_vector"`
+	Exact     Exact     `yaml:"exact"`
+	ImageHash ImageHash `yaml:"image_hash"`
+	VideoLike VideoLike `yaml:"video_like"`
+	AIVector  AIVector  `yaml:"ai_vector"`
 }
 
 type Exact struct {
@@ -92,7 +92,7 @@ type AIVectorService struct {
 	Port int    `yaml:"port"`
 }
 
-type VideoMedia struct {
+type MediaConfig struct {
 	MaxFrames               int      `yaml:"max_frames"`
 	TargetWidth             int      `yaml:"target_width"`
 	TargetHeight            int      `yaml:"target_height"`
@@ -194,7 +194,8 @@ func defaultConfig() Config {
 			Host:    "127.0.0.1",
 			Port:    8081,
 		},
-		JobsBuffer: 100,
+		JobsBuffer:  100,
+		MediaConfig: defaultMediaConfig(),
 		Matching: Matching{
 			Exact: Exact{
 				Buffer: 500,
@@ -204,7 +205,6 @@ func defaultConfig() Config {
 				Threshold: 12,
 				Buffer:    500,
 			},
-			VideoMedia: defaultVideoMedia(),
 			VideoLike: VideoLike{
 				DBPath:           "bastyle.sqlite",
 				Threshold:        12,
@@ -239,8 +239,8 @@ func defaultConfig() Config {
 	}
 }
 
-func defaultVideoMedia() VideoMedia {
-	return VideoMedia{
+func defaultMediaConfig() MediaConfig {
+	return MediaConfig{
 		MaxFrames:               10,
 		TargetWidth:             320,
 		TargetHeight:            320,
@@ -297,7 +297,7 @@ func (c Config) validate() error {
 	if c.Matching.ImageHash.Buffer <= 0 {
 		return errors.New("image hash buffer must be positive")
 	}
-	if err := c.Matching.VideoMedia.validate("video media"); err != nil {
+	if err := c.MediaConfig.validate("media config"); err != nil {
 		return err
 	}
 	if err := c.Matching.AIVector.validate(); err != nil {
@@ -382,23 +382,23 @@ func validateFrameMatchRule(prefix string, minMatchedFrames int, minMatchedRatio
 	return nil
 }
 
-func (c VideoMedia) validate(prefix string) error {
+func (c MediaConfig) validate(prefix string) error {
 	if c.MaxFrames <= 0 {
 		return errors.New(prefix + " max frames must be positive")
 	}
-	if c.MaxFrames > maxVideoMediaFrames {
+	if c.MaxFrames > maxMediaConfigFrames {
 		return errors.New(prefix + " max frames is too large")
 	}
 	if c.TargetWidth <= 0 {
 		return errors.New(prefix + " target width must be positive")
 	}
-	if c.TargetWidth > maxVideoMediaTargetDimension {
+	if c.TargetWidth > maxMediaConfigTargetDimension {
 		return errors.New(prefix + " target width is too large")
 	}
 	if c.TargetHeight <= 0 {
 		return errors.New(prefix + " target height must be positive")
 	}
-	if c.TargetHeight > maxVideoMediaTargetDimension {
+	if c.TargetHeight > maxMediaConfigTargetDimension {
 		return errors.New(prefix + " target height is too large")
 	}
 	if c.MaxUploadBytes.Bytes() <= 0 {

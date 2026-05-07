@@ -247,16 +247,18 @@ matching:
     top_k: 5
     min_matched_frames: 2
     min_matched_ratio: 0.4
-    request_timeout: 10s
-    max_frames: 10
-    target_width: 320
-    target_height: 320
     hnsw:
       m: 32
       ef_construction: 80
       ef_search: 64
     service:
       url: "http://bastyle-ai-vector:8080"
+media_config:
+  max_frames: 10
+  target_width: 320
+  target_height: 320
+  max_upload_bytes: 20MiB
+  max_image_pixels: 16777216
 ```
 
 Проверки конфига:

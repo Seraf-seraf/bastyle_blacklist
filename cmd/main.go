@@ -89,8 +89,8 @@ func main() {
 
 	matchers := []ports.ContentMatcher{exactMatcher, imageHashMatcher}
 	videoLikeExtractor, err := media.NewFFmpegFrameExtractor(
-		cfg.Matching.VideoMedia.FFmpegBinary,
-		cfg.Matching.VideoMedia.FFmpegTimeout.Value(),
+		cfg.MediaConfig.FFmpegBinary,
+		cfg.MediaConfig.FFmpegTimeout.Value(),
 	)
 	if err != nil {
 		log.Panic(err)
@@ -103,15 +103,15 @@ func main() {
 		cfg.Matching.VideoLike.Buffer,
 		cfg.Matching.VideoLike.DBPath,
 		domain.MediaExtractionPlan{
-			MaxFrames:    cfg.Matching.VideoMedia.MaxFrames,
-			TargetWidth:  cfg.Matching.VideoMedia.TargetWidth,
-			TargetHeight: cfg.Matching.VideoMedia.TargetHeight,
+			MaxFrames:    cfg.MediaConfig.MaxFrames,
+			TargetWidth:  cfg.MediaConfig.TargetWidth,
+			TargetHeight: cfg.MediaConfig.TargetHeight,
 		},
 		videolike.Limits{
-			MaxAnimationDuration:    cfg.Matching.VideoMedia.MaxAnimationDuration.Value(),
-			MaxVideoStickerDuration: cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value(),
-			MaxAnimationSize:        cfg.Matching.VideoMedia.MaxAnimationSize.Bytes(),
-			MaxVideoStickerSize:     cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes(),
+			MaxAnimationDuration:    cfg.MediaConfig.MaxAnimationDuration.Value(),
+			MaxVideoStickerDuration: cfg.MediaConfig.MaxVideoStickerDuration.Value(),
+			MaxAnimationSize:        cfg.MediaConfig.MaxAnimationSize.Bytes(),
+			MaxVideoStickerSize:     cfg.MediaConfig.MaxVideoStickerSize.Bytes(),
 		},
 		videolike.MatchRule{
 			MinMatchedFrames: cfg.Matching.VideoLike.MinMatchedFrames,
@@ -137,8 +137,8 @@ func main() {
 			log.Panic(err)
 		}
 		aiVectorExtractor, err := media.NewFFmpegFrameExtractor(
-			cfg.Matching.VideoMedia.FFmpegBinary,
-			cfg.Matching.VideoMedia.FFmpegTimeout.Value(),
+			cfg.MediaConfig.FFmpegBinary,
+			cfg.MediaConfig.FFmpegTimeout.Value(),
 		)
 		if err != nil {
 			log.Panic(err)
@@ -151,15 +151,15 @@ func main() {
 			Threshold:      cfg.Matching.AIVector.Threshold,
 			TopK:           cfg.Matching.AIVector.TopK,
 			Plan: domain.MediaExtractionPlan{
-				MaxFrames:    cfg.Matching.VideoMedia.MaxFrames,
-				TargetWidth:  cfg.Matching.VideoMedia.TargetWidth,
-				TargetHeight: cfg.Matching.VideoMedia.TargetHeight,
+				MaxFrames:    cfg.MediaConfig.MaxFrames,
+				TargetWidth:  cfg.MediaConfig.TargetWidth,
+				TargetHeight: cfg.MediaConfig.TargetHeight,
 			},
 			Limits: aivector.Limits{
-				MaxAnimationDuration:    cfg.Matching.VideoMedia.MaxAnimationDuration.Value(),
-				MaxVideoStickerDuration: cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value(),
-				MaxAnimationSize:        cfg.Matching.VideoMedia.MaxAnimationSize.Bytes(),
-				MaxVideoStickerSize:     cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes(),
+				MaxAnimationDuration:    cfg.MediaConfig.MaxAnimationDuration.Value(),
+				MaxVideoStickerDuration: cfg.MediaConfig.MaxVideoStickerDuration.Value(),
+				MaxAnimationSize:        cfg.MediaConfig.MaxAnimationSize.Bytes(),
+				MaxVideoStickerSize:     cfg.MediaConfig.MaxVideoStickerSize.Bytes(),
 			},
 			Rule: aivector.MatchRule{
 				MinMatchedFrames: cfg.Matching.AIVector.MinMatchedFrames,

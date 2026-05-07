@@ -21,6 +21,18 @@ health:
   host: "127.0.0.1"
   port: 18081
 jobs_buffer: 20
+media_config:
+  max_animation_duration: 9s
+  max_video_sticker_duration: 3s
+  max_animation_size: 1MB
+  max_video_sticker_size: 200KB
+  max_frames: 8
+  target_width: 256
+  target_height: 256
+  max_upload_bytes: 1MB
+  max_image_pixels: 2000000
+  ffmpeg_binary: /usr/bin/ffmpeg
+  ffmpeg_timeout: 7s
 matching:
   exact:
     buffer: 30
@@ -28,18 +40,6 @@ matching:
     db_path: "test.sqlite"
     threshold: 8
     buffer: 40
-  video_media:
-    max_animation_duration: 9s
-    max_video_sticker_duration: 3s
-    max_animation_size: 1MB
-    max_video_sticker_size: 200KB
-    max_frames: 8
-    target_width: 256
-    target_height: 256
-    max_upload_bytes: 1MB
-    max_image_pixels: 2000000
-    ffmpeg_binary: /usr/bin/ffmpeg
-    ffmpeg_timeout: 7s
   video_like:
     db_path: "video-like.sqlite"
     threshold: 9
@@ -112,17 +112,17 @@ matching:
 	if cfg.Matching.ImageHash.Buffer != 40 {
 		t.Fatalf("unexpected image hash buffer: %d", cfg.Matching.ImageHash.Buffer)
 	}
-	if cfg.Matching.VideoMedia.MaxAnimationDuration.Value() != 9*time.Second {
-		t.Fatalf("unexpected max animation duration: %s", cfg.Matching.VideoMedia.MaxAnimationDuration.Value())
+	if cfg.MediaConfig.MaxAnimationDuration.Value() != 9*time.Second {
+		t.Fatalf("unexpected max animation duration: %s", cfg.MediaConfig.MaxAnimationDuration.Value())
 	}
-	if cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value() != 3*time.Second {
-		t.Fatalf("unexpected max video sticker duration: %s", cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value())
+	if cfg.MediaConfig.MaxVideoStickerDuration.Value() != 3*time.Second {
+		t.Fatalf("unexpected max video sticker duration: %s", cfg.MediaConfig.MaxVideoStickerDuration.Value())
 	}
-	if cfg.Matching.VideoMedia.MaxAnimationSize.Bytes() != 1000000 {
-		t.Fatalf("unexpected max animation size: %d", cfg.Matching.VideoMedia.MaxAnimationSize.Bytes())
+	if cfg.MediaConfig.MaxAnimationSize.Bytes() != 1000000 {
+		t.Fatalf("unexpected max animation size: %d", cfg.MediaConfig.MaxAnimationSize.Bytes())
 	}
-	if cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes() != 200000 {
-		t.Fatalf("unexpected max video sticker size: %d", cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes())
+	if cfg.MediaConfig.MaxVideoStickerSize.Bytes() != 200000 {
+		t.Fatalf("unexpected max video sticker size: %d", cfg.MediaConfig.MaxVideoStickerSize.Bytes())
 	}
 	if cfg.Matching.VideoLike.DBPath != "video-like.sqlite" {
 		t.Fatalf("unexpected video like db path: %q", cfg.Matching.VideoLike.DBPath)
@@ -139,26 +139,26 @@ matching:
 	if cfg.Matching.VideoLike.MinMatchedRatio != 0.5 {
 		t.Fatalf("unexpected video like min matched ratio: %f", cfg.Matching.VideoLike.MinMatchedRatio)
 	}
-	if cfg.Matching.VideoMedia.MaxFrames != 8 {
-		t.Fatalf("unexpected max frames: %d", cfg.Matching.VideoMedia.MaxFrames)
+	if cfg.MediaConfig.MaxFrames != 8 {
+		t.Fatalf("unexpected max frames: %d", cfg.MediaConfig.MaxFrames)
 	}
-	if cfg.Matching.VideoMedia.TargetWidth != 256 {
-		t.Fatalf("unexpected target width: %d", cfg.Matching.VideoMedia.TargetWidth)
+	if cfg.MediaConfig.TargetWidth != 256 {
+		t.Fatalf("unexpected target width: %d", cfg.MediaConfig.TargetWidth)
 	}
-	if cfg.Matching.VideoMedia.TargetHeight != 256 {
-		t.Fatalf("unexpected target height: %d", cfg.Matching.VideoMedia.TargetHeight)
+	if cfg.MediaConfig.TargetHeight != 256 {
+		t.Fatalf("unexpected target height: %d", cfg.MediaConfig.TargetHeight)
 	}
-	if cfg.Matching.VideoMedia.MaxUploadBytes.Bytes() != 1000000 {
-		t.Fatalf("unexpected max upload bytes: %d", cfg.Matching.VideoMedia.MaxUploadBytes.Bytes())
+	if cfg.MediaConfig.MaxUploadBytes.Bytes() != 1000000 {
+		t.Fatalf("unexpected max upload bytes: %d", cfg.MediaConfig.MaxUploadBytes.Bytes())
 	}
-	if cfg.Matching.VideoMedia.MaxImagePixels != 2000000 {
-		t.Fatalf("unexpected max image pixels: %d", cfg.Matching.VideoMedia.MaxImagePixels)
+	if cfg.MediaConfig.MaxImagePixels != 2000000 {
+		t.Fatalf("unexpected max image pixels: %d", cfg.MediaConfig.MaxImagePixels)
 	}
-	if cfg.Matching.VideoMedia.FFmpegBinary != "/usr/bin/ffmpeg" {
-		t.Fatalf("unexpected ffmpeg binary: %q", cfg.Matching.VideoMedia.FFmpegBinary)
+	if cfg.MediaConfig.FFmpegBinary != "/usr/bin/ffmpeg" {
+		t.Fatalf("unexpected ffmpeg binary: %q", cfg.MediaConfig.FFmpegBinary)
 	}
-	if cfg.Matching.VideoMedia.FFmpegTimeout.Value() != 7*time.Second {
-		t.Fatalf("unexpected ffmpeg timeout: %s", cfg.Matching.VideoMedia.FFmpegTimeout.Value())
+	if cfg.MediaConfig.FFmpegTimeout.Value() != 7*time.Second {
+		t.Fatalf("unexpected ffmpeg timeout: %s", cfg.MediaConfig.FFmpegTimeout.Value())
 	}
 	if !cfg.Matching.AIVector.Enabled {
 		t.Fatal("expected ai vector matcher to be enabled")
@@ -239,17 +239,17 @@ matching:
 	if cfg.Matching.ImageHash.Threshold != 12 {
 		t.Fatalf("unexpected default image hash threshold: %d", cfg.Matching.ImageHash.Threshold)
 	}
-	if cfg.Matching.VideoMedia.MaxAnimationDuration.Value() != 10*time.Second {
-		t.Fatalf("unexpected default max animation duration: %s", cfg.Matching.VideoMedia.MaxAnimationDuration.Value())
+	if cfg.MediaConfig.MaxAnimationDuration.Value() != 10*time.Second {
+		t.Fatalf("unexpected default max animation duration: %s", cfg.MediaConfig.MaxAnimationDuration.Value())
 	}
-	if cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value() != 3*time.Second {
-		t.Fatalf("unexpected default max video sticker duration: %s", cfg.Matching.VideoMedia.MaxVideoStickerDuration.Value())
+	if cfg.MediaConfig.MaxVideoStickerDuration.Value() != 3*time.Second {
+		t.Fatalf("unexpected default max video sticker duration: %s", cfg.MediaConfig.MaxVideoStickerDuration.Value())
 	}
-	if cfg.Matching.VideoMedia.MaxAnimationSize.Bytes() != 20<<20 {
-		t.Fatalf("unexpected default max animation size: %d", cfg.Matching.VideoMedia.MaxAnimationSize.Bytes())
+	if cfg.MediaConfig.MaxAnimationSize.Bytes() != 20<<20 {
+		t.Fatalf("unexpected default max animation size: %d", cfg.MediaConfig.MaxAnimationSize.Bytes())
 	}
-	if cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes() != 256<<10 {
-		t.Fatalf("unexpected default max video sticker size: %d", cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes())
+	if cfg.MediaConfig.MaxVideoStickerSize.Bytes() != 256<<10 {
+		t.Fatalf("unexpected default max video sticker size: %d", cfg.MediaConfig.MaxVideoStickerSize.Bytes())
 	}
 	if cfg.Matching.VideoLike.DBPath != "bastyle.sqlite" {
 		t.Fatalf("unexpected default video like db path: %q", cfg.Matching.VideoLike.DBPath)
@@ -266,20 +266,20 @@ matching:
 	if cfg.Matching.VideoLike.MinMatchedRatio != 0.4 {
 		t.Fatalf("unexpected default video like min matched ratio: %f", cfg.Matching.VideoLike.MinMatchedRatio)
 	}
-	if cfg.Matching.VideoMedia.MaxFrames != 10 {
-		t.Fatalf("unexpected default max frames: %d", cfg.Matching.VideoMedia.MaxFrames)
+	if cfg.MediaConfig.MaxFrames != 10 {
+		t.Fatalf("unexpected default max frames: %d", cfg.MediaConfig.MaxFrames)
 	}
-	if cfg.Matching.VideoMedia.TargetWidth != 320 {
-		t.Fatalf("unexpected default target width: %d", cfg.Matching.VideoMedia.TargetWidth)
+	if cfg.MediaConfig.TargetWidth != 320 {
+		t.Fatalf("unexpected default target width: %d", cfg.MediaConfig.TargetWidth)
 	}
-	if cfg.Matching.VideoMedia.TargetHeight != 320 {
-		t.Fatalf("unexpected default target height: %d", cfg.Matching.VideoMedia.TargetHeight)
+	if cfg.MediaConfig.TargetHeight != 320 {
+		t.Fatalf("unexpected default target height: %d", cfg.MediaConfig.TargetHeight)
 	}
-	if cfg.Matching.VideoMedia.FFmpegBinary != "ffmpeg" {
-		t.Fatalf("unexpected default ffmpeg binary: %q", cfg.Matching.VideoMedia.FFmpegBinary)
+	if cfg.MediaConfig.FFmpegBinary != "ffmpeg" {
+		t.Fatalf("unexpected default ffmpeg binary: %q", cfg.MediaConfig.FFmpegBinary)
 	}
-	if cfg.Matching.VideoMedia.FFmpegTimeout.Value() != 10*time.Second {
-		t.Fatalf("unexpected default ffmpeg timeout: %s", cfg.Matching.VideoMedia.FFmpegTimeout.Value())
+	if cfg.MediaConfig.FFmpegTimeout.Value() != 10*time.Second {
+		t.Fatalf("unexpected default ffmpeg timeout: %s", cfg.MediaConfig.FFmpegTimeout.Value())
 	}
 	if cfg.Telegram.HTTPClient.Enabled {
 		t.Fatal("expected default telegram http client to be disabled")
@@ -316,7 +316,7 @@ matching:
 	}
 }
 
-func TestLoadRejectsVideoMediaFieldsUnderVideoLike(t *testing.T) {
+func TestLoadRejectsMediaConfigFieldsUnderVideoLike(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "token"
@@ -373,16 +373,15 @@ matching:
 	}
 }
 
-func TestLoadRejectsInvalidVideoLikeConfig(t *testing.T) {
+func TestLoadRejectsInvalidMediaConfig(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "token"
 matching:
   image_hash:
     db_path: "test.sqlite"
-  video_like:
-  video_media:
-    max_animation_duration: 0s
+media_config:
+  max_animation_duration: 0s
 `)
 
 	_, err := Load(path)
@@ -391,16 +390,15 @@ matching:
 	}
 }
 
-func TestLoadRejectsInvalidVideoLikeSize(t *testing.T) {
+func TestLoadRejectsInvalidMediaConfigSize(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "token"
 matching:
   image_hash:
     db_path: "test.sqlite"
-  video_like:
-  video_media:
-    max_animation_size: "not-a-size"
+media_config:
+  max_animation_size: "not-a-size"
 `)
 
 	_, err := Load(path)
@@ -409,16 +407,15 @@ matching:
 	}
 }
 
-func TestLoadRejectsExcessiveVideoLikeFrames(t *testing.T) {
+func TestLoadRejectsExcessiveMediaConfigFrames(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "token"
 matching:
   image_hash:
     db_path: "test.sqlite"
-  video_like:
-  video_media:
-    max_frames: 21
+media_config:
+  max_frames: 21
 `)
 
 	_, err := Load(path)
@@ -427,16 +424,15 @@ matching:
 	}
 }
 
-func TestLoadRejectsExcessiveVideoLikeTargetSize(t *testing.T) {
+func TestLoadRejectsExcessiveMediaConfigTargetSize(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "token"
 matching:
   image_hash:
     db_path: "test.sqlite"
-  video_like:
-  video_media:
-    target_width: 1025
+media_config:
+  target_width: 1025
 `)
 
 	_, err := Load(path)
@@ -445,16 +441,15 @@ matching:
 	}
 }
 
-func TestLoadRejectsEmptyFFmpegBinary(t *testing.T) {
+func TestLoadRejectsEmptyMediaConfigFFmpegBinary(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "token"
 matching:
   image_hash:
     db_path: "test.sqlite"
-  video_like:
-  video_media:
-    ffmpeg_binary: ""
+media_config:
+  ffmpeg_binary: ""
 `)
 
 	_, err := Load(path)

@@ -43,7 +43,7 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         config = yaml.safe_load(file) or {}
 
     ai_vector = config.get("matching", {}).get("ai_vector", {})
-    video_media = config.get("matching", {}).get("video_media", {})
+    media_config = config.get("media_config", {})
     service = ai_vector.get("service", {})
     hnsw = ai_vector.get("hnsw", {})
 
@@ -56,10 +56,10 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         db_path=str(ai_vector.get("db_path", "bastyle.sqlite")),
         index_path=str(ai_vector.get("index_path", "faiss-image.index")),
         max_files=int(ai_vector.get("max_files", 10)),
-        max_upload_bytes=parse_byte_size(video_media.get("max_upload_bytes", "20MiB")),
-        max_image_pixels=int(video_media.get("max_image_pixels", 4096 * 4096)),
-        target_width=int(video_media.get("target_width", 320)),
-        target_height=int(video_media.get("target_height", 320)),
+        max_upload_bytes=parse_byte_size(media_config.get("max_upload_bytes", "20MiB")),
+        max_image_pixels=int(media_config.get("max_image_pixels", 4096 * 4096)),
+        target_width=int(media_config.get("target_width", 320)),
+        target_height=int(media_config.get("target_height", 320)),
         threshold=float(ai_vector.get("threshold", 0.92)),
         hnsw=HNSWConfig(
             m=int(hnsw.get("m", 32)),
