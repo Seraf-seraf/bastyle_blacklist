@@ -148,7 +148,7 @@ matching:
     max_frames: 10
     target_width: 320
     target_height: 320
-    max_upload_bytes: 20971520
+    max_upload_bytes: 20MiB
     max_image_pixels: 16777216
     ffmpeg_binary: ffmpeg
     ffmpeg_timeout: 10s

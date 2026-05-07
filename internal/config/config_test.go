@@ -36,7 +36,7 @@ matching:
     max_frames: 8
     target_width: 256
     target_height: 256
-    max_upload_bytes: 1000000
+    max_upload_bytes: 1MB
     max_image_pixels: 2000000
     ffmpeg_binary: /usr/bin/ffmpeg
     ffmpeg_timeout: 7s
@@ -147,8 +147,8 @@ matching:
 	if cfg.Matching.VideoMedia.TargetHeight != 256 {
 		t.Fatalf("unexpected target height: %d", cfg.Matching.VideoMedia.TargetHeight)
 	}
-	if cfg.Matching.VideoMedia.MaxUploadBytes != 1000000 {
-		t.Fatalf("unexpected max upload bytes: %d", cfg.Matching.VideoMedia.MaxUploadBytes)
+	if cfg.Matching.VideoMedia.MaxUploadBytes.Bytes() != 1000000 {
+		t.Fatalf("unexpected max upload bytes: %d", cfg.Matching.VideoMedia.MaxUploadBytes.Bytes())
 	}
 	if cfg.Matching.VideoMedia.MaxImagePixels != 2000000 {
 		t.Fatalf("unexpected max image pixels: %d", cfg.Matching.VideoMedia.MaxImagePixels)

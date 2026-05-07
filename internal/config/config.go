@@ -98,7 +98,7 @@ type VideoMedia struct {
 	MaxFrames               int      `yaml:"max_frames"`
 	TargetWidth             int      `yaml:"target_width"`
 	TargetHeight            int      `yaml:"target_height"`
-	MaxUploadBytes          int64    `yaml:"max_upload_bytes"`
+	MaxUploadBytes          ByteSize `yaml:"max_upload_bytes"`
 	MaxImagePixels          int64    `yaml:"max_image_pixels"`
 	MaxAnimationDuration    Duration `yaml:"max_animation_duration"`
 	MaxVideoStickerDuration Duration `yaml:"max_video_sticker_duration"`
@@ -246,7 +246,7 @@ func defaultVideoMedia() VideoMedia {
 		MaxFrames:               10,
 		TargetWidth:             320,
 		TargetHeight:            320,
-		MaxUploadBytes:          20 << 20,
+		MaxUploadBytes:          ByteSize(20 << 20),
 		MaxImagePixels:          4096 * 4096,
 		MaxAnimationDuration:    Duration(10 * time.Second),
 		MaxVideoStickerDuration: Duration(3 * time.Second),
@@ -400,7 +400,7 @@ func (c VideoMedia) validate(prefix string) error {
 	if c.TargetHeight > maxVideoMediaTargetDimension {
 		return errors.New(prefix + " target height is too large")
 	}
-	if c.MaxUploadBytes <= 0 {
+	if c.MaxUploadBytes.Bytes() <= 0 {
 		return errors.New(prefix + " max upload bytes must be positive")
 	}
 	if c.MaxImagePixels <= 0 {
