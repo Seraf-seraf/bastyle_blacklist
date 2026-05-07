@@ -1,9 +1,10 @@
 import uvicorn
 
-from ai_vector_service.api import Dependencies, UploadLimits, create_app
+from ai_vector_service.api import Dependencies, UploadLimits, VectorIndexService, create_app
 from ai_vector_service.config import load_settings
 from ai_vector_service.images import PillowImageDecoder
 from ai_vector_service.model import TransformersImageEmbeddingModel
+from ai_vector_service.storage import SQLiteVectorStore
 
 
 settings = load_settings()
@@ -17,6 +18,13 @@ app = create_app(
             settings.model_name,
             settings.model_revision,
             settings.device,
+        ),
+        vectors=VectorIndexService(
+            store=SQLiteVectorStore(settings.db_path),
+            model_name=settings.model_name,
+            model_revision=settings.model_revision,
+            index_path=settings.index_path,
+            hnsw_config=settings.hnsw,
         ),
     ),
     UploadLimits(

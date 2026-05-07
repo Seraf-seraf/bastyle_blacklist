@@ -3,6 +3,8 @@ from pathlib import Path
 
 import yaml
 
+from ai_vector_service.index import HNSWConfig
+
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 DEFAULT_MODEL_NAME = "nomic-ai/nomic-embed-vision-v1.5"
@@ -24,6 +26,7 @@ class Settings:
     target_width: int
     target_height: int
     threshold: float
+    hnsw: HNSWConfig
 
 
 def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
@@ -31,10 +34,12 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         config = yaml.safe_load(file) or {}
 
     ai_vector = config.get("matching", {}).get("ai_vector", {})
+    video_media = config.get("matching", {}).get("video_media", {})
     service = ai_vector.get("service", {})
+    hnsw = ai_vector.get("hnsw", {})
 
     return Settings(
-        host=str(service.get("host", "0.0.0.0")),
+        host="0.0.0.0",
         port=int(service.get("port", 8080)),
         model_name=str(ai_vector.get("model_name", DEFAULT_MODEL_NAME)),
         model_revision=str(ai_vector.get("model_revision", DEFAULT_MODEL_REVISION)),
@@ -42,9 +47,14 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         db_path=str(ai_vector.get("db_path", "bastyle.sqlite")),
         index_path=str(ai_vector.get("index_path", "faiss-image.index")),
         max_files=int(ai_vector.get("max_files", 10)),
-        max_upload_bytes=int(ai_vector.get("max_upload_bytes", 20 * 1024 * 1024)),
-        max_image_pixels=int(ai_vector.get("max_image_pixels", 4096 * 4096)),
-        target_width=int(ai_vector.get("target_width", 320)),
-        target_height=int(ai_vector.get("target_height", 320)),
+        max_upload_bytes=int(video_media.get("max_upload_bytes", 20 * 1024 * 1024)),
+        max_image_pixels=int(video_media.get("max_image_pixels", 4096 * 4096)),
+        target_width=int(video_media.get("target_width", 320)),
+        target_height=int(video_media.get("target_height", 320)),
         threshold=float(ai_vector.get("threshold", 0.92)),
+        hnsw=HNSWConfig(
+            m=int(hnsw.get("m", 32)),
+            ef_construction=int(hnsw.get("ef_construction", 80)),
+            ef_search=int(hnsw.get("ef_search", 64)),
+        ),
     )

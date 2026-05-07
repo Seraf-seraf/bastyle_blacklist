@@ -154,6 +154,9 @@ class FaissHNSWVectorIndex:
     def add_ban(self, ban: VectorBan) -> None:
         self.add_bans([ban])
 
+    def validate_vectors(self, vectors: list[list[float]]) -> None:
+        _normalize_vectors(vectors, self._dimension)
+
     def add_bans(self, bans: list[VectorBan]) -> None:
         vectors: list[list[float]] = []
         refs: list[IndexedVectorRef] = []
