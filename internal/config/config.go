@@ -48,7 +48,6 @@ type Matching struct {
 	Exact      Exact      `yaml:"exact"`
 	ImageHash  ImageHash  `yaml:"image_hash"`
 	VideoMedia VideoMedia `yaml:"video_media"`
-	VideoMatch VideoMatch `yaml:"video_match"`
 	VideoLike  VideoLike  `yaml:"video_like"`
 	AIVector   AIVector   `yaml:"ai_vector"`
 }
@@ -64,29 +63,28 @@ type ImageHash struct {
 }
 
 type VideoLike struct {
-	DBPath    string `yaml:"db_path"`
-	Threshold int    `yaml:"threshold"`
-	Buffer    int    `yaml:"buffer"`
-}
-
-type VideoMatch struct {
+	DBPath           string  `yaml:"db_path"`
+	Threshold        int     `yaml:"threshold"`
+	Buffer           int     `yaml:"buffer"`
 	MinMatchedFrames int     `yaml:"min_matched_frames"`
 	MinMatchedRatio  float64 `yaml:"min_matched_ratio"`
 }
 
 type AIVector struct {
-	Enabled        bool            `yaml:"enabled"`
-	ModelName      string          `yaml:"model_name"`
-	ModelRevision  string          `yaml:"model_revision"`
-	Device         string          `yaml:"device"`
-	DBPath         string          `yaml:"db_path"`
-	IndexPath      string          `yaml:"index_path"`
-	MaxFiles       int             `yaml:"max_files"`
-	Threshold      float64         `yaml:"threshold"`
-	TopK           int             `yaml:"top_k"`
-	RequestTimeout Duration        `yaml:"request_timeout"`
-	Service        AIVectorService `yaml:"service"`
-	HNSW           HNSW            `yaml:"hnsw"`
+	Enabled          bool            `yaml:"enabled"`
+	ModelName        string          `yaml:"model_name"`
+	ModelRevision    string          `yaml:"model_revision"`
+	Device           string          `yaml:"device"`
+	DBPath           string          `yaml:"db_path"`
+	IndexPath        string          `yaml:"index_path"`
+	MaxFiles         int             `yaml:"max_files"`
+	Threshold        float64         `yaml:"threshold"`
+	TopK             int             `yaml:"top_k"`
+	MinMatchedFrames int             `yaml:"min_matched_frames"`
+	MinMatchedRatio  float64         `yaml:"min_matched_ratio"`
+	RequestTimeout   Duration        `yaml:"request_timeout"`
+	Service          AIVectorService `yaml:"service"`
+	HNSW             HNSW            `yaml:"hnsw"`
 }
 
 type AIVectorService struct {
@@ -207,26 +205,26 @@ func defaultConfig() Config {
 				Buffer:    500,
 			},
 			VideoMedia: defaultVideoMedia(),
-			VideoMatch: VideoMatch{
+			VideoLike: VideoLike{
+				DBPath:           "bastyle.sqlite",
+				Threshold:        12,
+				Buffer:           500,
 				MinMatchedFrames: 2,
 				MinMatchedRatio:  0.4,
 			},
-			VideoLike: VideoLike{
-				DBPath:    "bastyle.sqlite",
-				Threshold: 12,
-				Buffer:    500,
-			},
 			AIVector: AIVector{
-				Enabled:        false,
-				ModelName:      "nomic-ai/nomic-embed-vision-v1.5",
-				ModelRevision:  "e3a725bce72db07ca4adb1d83da08903f3ee02f8",
-				Device:         "cpu",
-				DBPath:         "bastyle.sqlite",
-				IndexPath:      "faiss-image.index",
-				MaxFiles:       10,
-				Threshold:      0.92,
-				TopK:           5,
-				RequestTimeout: Duration(10 * time.Second),
+				Enabled:          false,
+				ModelName:        "nomic-ai/nomic-embed-vision-v1.5",
+				ModelRevision:    "e3a725bce72db07ca4adb1d83da08903f3ee02f8",
+				Device:           "cpu",
+				DBPath:           "bastyle.sqlite",
+				IndexPath:        "faiss-image.index",
+				MaxFiles:         10,
+				Threshold:        0.92,
+				TopK:             5,
+				MinMatchedFrames: 2,
+				MinMatchedRatio:  0.4,
+				RequestTimeout:   Duration(10 * time.Second),
 				Service: AIVectorService{
 					Host: "127.0.0.1",
 					Port: 8080,
@@ -302,9 +300,6 @@ func (c Config) validate() error {
 	if err := c.Matching.VideoMedia.validate("video media"); err != nil {
 		return err
 	}
-	if err := c.Matching.VideoMatch.validate("video match"); err != nil {
-		return err
-	}
 	if err := c.Matching.AIVector.validate(); err != nil {
 		return err
 	}
@@ -316,6 +311,9 @@ func (c Config) validate() error {
 	}
 	if c.Matching.VideoLike.Buffer <= 0 {
 		return errors.New("video like buffer must be positive")
+	}
+	if err := validateFrameMatchRule("video like", c.Matching.VideoLike.MinMatchedFrames, c.Matching.VideoLike.MinMatchedRatio); err != nil {
+		return err
 	}
 	return nil
 }
@@ -348,6 +346,9 @@ func (c AIVector) validate() error {
 	if c.TopK <= 0 {
 		return errors.New("ai vector top k must be positive")
 	}
+	if err := validateFrameMatchRule("ai vector", c.MinMatchedFrames, c.MinMatchedRatio); err != nil {
+		return err
+	}
 	if c.RequestTimeout.Value() <= 0 {
 		return errors.New("ai vector request timeout must be positive")
 	}
@@ -370,11 +371,11 @@ func (c AIVector) validate() error {
 	return nil
 }
 
-func (c VideoMatch) validate(prefix string) error {
-	if c.MinMatchedFrames <= 0 {
+func validateFrameMatchRule(prefix string, minMatchedFrames int, minMatchedRatio float64) error {
+	if minMatchedFrames <= 0 {
 		return errors.New(prefix + " min matched frames must be positive")
 	}
-	if c.MinMatchedRatio <= 0 || c.MinMatchedRatio > 1 {
+	if minMatchedRatio <= 0 || minMatchedRatio > 1 {
 		return errors.New(prefix + " min matched ratio must be between 0 and 1")
 	}
 

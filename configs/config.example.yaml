@@ -32,13 +32,12 @@ matching:
     max_image_pixels: 16777216
     ffmpeg_binary: ffmpeg
     ffmpeg_timeout: 10s
-  video_match:
-    min_matched_frames: 2
-    min_matched_ratio: 0.4
   video_like:
     db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
   ai_vector:
     enabled: false
     model_name: "nomic-ai/nomic-embed-vision-v1.5"
@@ -49,6 +48,8 @@ matching:
     max_files: 10
     threshold: 0.92
     top_k: 5
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
     request_timeout: 10s
     service:
       host: "bastyle-ai-vector"

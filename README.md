@@ -153,14 +153,12 @@ matching:
     ffmpeg_binary: ffmpeg
     ffmpeg_timeout: 10s
 
-  video_match:
-    min_matched_frames: 2
-    min_matched_ratio: 0.4
-
   video_like:
     db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
 
   ai_vector:
     enabled: false
@@ -172,6 +170,8 @@ matching:
     max_files: 10
     threshold: 0.92
     top_k: 5
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
     request_timeout: 10s
     service:
       host: "bastyle-ai-vector"
@@ -200,15 +200,16 @@ matching:
 `matching.image_hash.threshold` - максимальная Hamming distance для похожих изображений.
 `matching.video_media.*` - общие лимиты и FFmpeg-настройки для кадров, которые
 используют `video_like` и `ai_vector`.
-`matching.video_match.min_matched_frames` - минимальное количество совпавших
-кадров для video-like медиа.
-`matching.video_match.min_matched_ratio` - минимальная доля совпавших кадров.
 `matching.video_like.db_path` - SQLite-файл для video-like отпечатков.
+`matching.video_like.min_matched_frames` и `min_matched_ratio` - правило
+совпадения кадров для video-like hash matcher-а.
 `matching.ai_vector.enabled` - включает или отключает AI vector matcher.
 `matching.ai_vector.db_path` - SQLite-файл для AI-vector ban'ов.
 `matching.ai_vector.index_path` - файл Faiss HNSW индекса.
 `matching.ai_vector.threshold` - минимальный cosine similarity score.
 `matching.ai_vector.top_k` - сколько ближайших векторов запрашивать у AI service.
+`matching.ai_vector.min_matched_frames` и `min_matched_ratio` - правило
+совпадения кадров для AI-vector matcher-а.
 `matching.ai_vector.service.host` и `matching.ai_vector.service.port` - host/port
 AI vector service.
 `matching.ai_vector.hnsw.m`, `ef_construction`, `ef_search` - параметры HNSW

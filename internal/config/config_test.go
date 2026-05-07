@@ -40,13 +40,12 @@ matching:
     max_image_pixels: 2000000
     ffmpeg_binary: /usr/bin/ffmpeg
     ffmpeg_timeout: 7s
-  video_match:
-    min_matched_frames: 3
-    min_matched_ratio: 0.5
   video_like:
     db_path: "video-like.sqlite"
     threshold: 9
     buffer: 50
+    min_matched_frames: 3
+    min_matched_ratio: 0.5
   ai_vector:
     enabled: true
     model_name: "test-model"
@@ -57,6 +56,8 @@ matching:
     max_files: 8
     threshold: 0.91
     top_k: 7
+    min_matched_frames: 4
+    min_matched_ratio: 0.6
     request_timeout: 6s
     service:
       host: "127.0.0.1"
@@ -132,11 +133,11 @@ matching:
 	if cfg.Matching.VideoLike.Buffer != 50 {
 		t.Fatalf("unexpected video like buffer: %d", cfg.Matching.VideoLike.Buffer)
 	}
-	if cfg.Matching.VideoMatch.MinMatchedFrames != 3 {
-		t.Fatalf("unexpected min matched frames: %d", cfg.Matching.VideoMatch.MinMatchedFrames)
+	if cfg.Matching.VideoLike.MinMatchedFrames != 3 {
+		t.Fatalf("unexpected video like min matched frames: %d", cfg.Matching.VideoLike.MinMatchedFrames)
 	}
-	if cfg.Matching.VideoMatch.MinMatchedRatio != 0.5 {
-		t.Fatalf("unexpected min matched ratio: %f", cfg.Matching.VideoMatch.MinMatchedRatio)
+	if cfg.Matching.VideoLike.MinMatchedRatio != 0.5 {
+		t.Fatalf("unexpected video like min matched ratio: %f", cfg.Matching.VideoLike.MinMatchedRatio)
 	}
 	if cfg.Matching.VideoMedia.MaxFrames != 8 {
 		t.Fatalf("unexpected max frames: %d", cfg.Matching.VideoMedia.MaxFrames)
@@ -179,6 +180,12 @@ matching:
 	}
 	if cfg.Matching.AIVector.TopK != 7 {
 		t.Fatalf("unexpected ai vector top k: %d", cfg.Matching.AIVector.TopK)
+	}
+	if cfg.Matching.AIVector.MinMatchedFrames != 4 {
+		t.Fatalf("unexpected ai vector min matched frames: %d", cfg.Matching.AIVector.MinMatchedFrames)
+	}
+	if cfg.Matching.AIVector.MinMatchedRatio != 0.6 {
+		t.Fatalf("unexpected ai vector min matched ratio: %f", cfg.Matching.AIVector.MinMatchedRatio)
 	}
 	if cfg.Matching.AIVector.RequestTimeout.Value() != 6*time.Second {
 		t.Fatalf("unexpected ai vector request timeout: %s", cfg.Matching.AIVector.RequestTimeout.Value())
@@ -253,11 +260,11 @@ matching:
 	if cfg.Matching.VideoLike.Buffer != 500 {
 		t.Fatalf("unexpected default video like buffer: %d", cfg.Matching.VideoLike.Buffer)
 	}
-	if cfg.Matching.VideoMatch.MinMatchedFrames != 2 {
-		t.Fatalf("unexpected default min matched frames: %d", cfg.Matching.VideoMatch.MinMatchedFrames)
+	if cfg.Matching.VideoLike.MinMatchedFrames != 2 {
+		t.Fatalf("unexpected default video like min matched frames: %d", cfg.Matching.VideoLike.MinMatchedFrames)
 	}
-	if cfg.Matching.VideoMatch.MinMatchedRatio != 0.4 {
-		t.Fatalf("unexpected default min matched ratio: %f", cfg.Matching.VideoMatch.MinMatchedRatio)
+	if cfg.Matching.VideoLike.MinMatchedRatio != 0.4 {
+		t.Fatalf("unexpected default video like min matched ratio: %f", cfg.Matching.VideoLike.MinMatchedRatio)
 	}
 	if cfg.Matching.VideoMedia.MaxFrames != 10 {
 		t.Fatalf("unexpected default max frames: %d", cfg.Matching.VideoMedia.MaxFrames)
@@ -288,6 +295,12 @@ matching:
 	}
 	if cfg.Matching.AIVector.TopK != 5 {
 		t.Fatalf("unexpected default ai vector top k: %d", cfg.Matching.AIVector.TopK)
+	}
+	if cfg.Matching.AIVector.MinMatchedFrames != 2 {
+		t.Fatalf("unexpected default ai vector min matched frames: %d", cfg.Matching.AIVector.MinMatchedFrames)
+	}
+	if cfg.Matching.AIVector.MinMatchedRatio != 0.4 {
+		t.Fatalf("unexpected default ai vector min matched ratio: %f", cfg.Matching.AIVector.MinMatchedRatio)
 	}
 	if cfg.Matching.AIVector.RequestTimeout.Value() != 10*time.Second {
 		t.Fatalf("unexpected default ai vector request timeout: %s", cfg.Matching.AIVector.RequestTimeout.Value())

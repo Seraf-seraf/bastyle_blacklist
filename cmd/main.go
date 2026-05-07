@@ -114,8 +114,8 @@ func main() {
 			MaxVideoStickerSize:     cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes(),
 		},
 		videolike.MatchRule{
-			MinMatchedFrames: cfg.Matching.VideoMatch.MinMatchedFrames,
-			MinMatchedRatio:  cfg.Matching.VideoMatch.MinMatchedRatio,
+			MinMatchedFrames: cfg.Matching.VideoLike.MinMatchedFrames,
+			MinMatchedRatio:  cfg.Matching.VideoLike.MinMatchedRatio,
 		},
 	)
 	if err != nil {
@@ -162,8 +162,8 @@ func main() {
 				MaxVideoStickerSize:     cfg.Matching.VideoMedia.MaxVideoStickerSize.Bytes(),
 			},
 			Rule: aivector.MatchRule{
-				MinMatchedFrames: cfg.Matching.VideoMatch.MinMatchedFrames,
-				MinMatchedRatio:  cfg.Matching.VideoMatch.MinMatchedRatio,
+				MinMatchedFrames: cfg.Matching.AIVector.MinMatchedFrames,
+				MinMatchedRatio:  cfg.Matching.AIVector.MinMatchedRatio,
 			},
 		})
 		if err != nil {
