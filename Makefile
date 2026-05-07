@@ -4,8 +4,9 @@ BUILD_DIR := build/bin
 IMAGE ?= $(APP):local
 CONFIG ?= configs/config.yaml
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMPOSE := docker compose -f build/docker-compose.yaml --project-directory .
 
-.PHONY: help fmt fmt-check vet test build clean up stop down ps logs ci
+.PHONY: help fmt fmt-check vet test py-test build clean up stop down ps logs ci
 
 help:
 	@echo "Доступные команды:"
@@ -13,6 +14,7 @@ help:
 	@echo "  make fmt-check - проверить форматирование Go-кода"
 	@echo "  make vet       - запустить go vet"
 	@echo "  make test      - запустить все Go-тесты"
+	@echo "  make py-test   - запустить тесты Python AI-компонента"
 	@echo "  make build     - собрать бинарник бота"
 	@echo "  make clean     - удалить локальные build-артефакты"
 	@echo "  make ci        - полный прогон: vet + test + build"
@@ -34,6 +36,9 @@ vet:
 test:
 	go test ./...
 
+py-test:
+	python3 -m pytest ai_vector_service/tests
+
 build:
 	mkdir -p $(BUILD_DIR)
 	go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(BUILD_DIR)/$(APP) $(MAIN)
@@ -42,18 +47,18 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 up:
-	docker compose up -d --build
+	$(COMPOSE) up -d --build
 
 stop:
-	docker compose stop
+	$(COMPOSE) stop
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 ps:
-	docker compose ps
+	$(COMPOSE) ps
 
 logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 ci: vet test build

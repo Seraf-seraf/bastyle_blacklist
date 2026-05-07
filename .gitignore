@@ -9,5 +9,9 @@ vendor/
 main
 bastyle
 build/bin/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
 AGENTS.md
 config.yaml
