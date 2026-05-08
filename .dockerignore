@@ -2,9 +2,13 @@
 .github
 .idea
 .codex
+.venv
+.pytest_cache
 build/*.service
+build/bin
 docs
 vendor
+data
 *.log
 *.sqlite
 *.sqlite-shm
