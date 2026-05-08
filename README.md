@@ -1,6 +1,6 @@
 # Bastyle Blacklist
 
-Версия: `v1.1.1`
+Версия: `v1.2.0`
 
 `Bastyle Blacklist` - Telegram-бот для автоматической модерации медиа в
 групповых чатах. Бот помогает администраторам один раз заблокировать нежеланный
@@ -22,18 +22,16 @@
 5. При повторной отправке совпадающего контента бот удаляет сообщение
    автоматически.
 
-## Возможности `v1.1.0`
+## Возможности `v1.2.0`
 
 - exact-match по Telegram `file_unique_id`;
 - perceptual hash matching для фото и статичных стикеров;
 - video-like matching для Telegram animations и video stickers;
-- AI vector matching для визуально похожих изображений и кадров;
-- извлечение кадров через FFmpeg для GIF/video-like контента;
-- SQLite-хранилище fingerprints;
+- AI-vector matching для визуально похожих изображений, статичных стикеров,
+  GIF-анимаций, Telegram animations и video stickers;
 - проверка прав администратора перед `/ban`;
 - автоматическое удаление заблокированных сообщений;
-- настройка лимитов для animation/video sticker обработки;
-- отключаемый `ai_vector` matcher через YAML config.
+- настройка лимитов для animation/video sticker обработки.
 
 ## Ограничения бота
 
@@ -229,30 +227,12 @@ go run ./cmd/main.go -config configs/config.yaml
 Authorized as <bot_username>
 ```
 
-## Makefile И CI
-
-Основные команды:
-
-```bash
-make test
-make build
-make ci
-make up
-make down
-```
-
-`make ci` запускает `go vet`, тесты и сборку бинарника в
-`build/bin/bastyle-blacklist`.
-
-В репозитории добавлен GitHub Actions workflow `.github/workflows/ci.yml`.
-Он запускает `make ci` и отдельно проверяет сборку Docker-образа.
-
 ## Docker
 
 Сборка:
 
 ```bash
-docker build -f build/Dockerfile -t bastyle-blacklist:1.1.1 .
+docker build -f build/Dockerfile -t bastyle-blacklist:1.2.0 .
 ```
 
 Запуск:
@@ -263,7 +243,7 @@ docker run --rm \
   --memory-swap 512m \
   -v "$PWD/configs/config.yaml:/etc/bastyle/config.yaml:ro" \
   -v bastyle-data:/var/lib/bastyle \
-  bastyle-blacklist:1.1.1
+  bastyle-blacklist:1.2.0
 ```
 
 Для Docker удобно указывать SQLite-файл внутри `/var/lib/bastyle`:
@@ -317,7 +297,7 @@ sudo install -d -o root -g root -m 0755 /etc/bastyle
 sudo install -o root -g root -m 0640 configs/config.example.yaml /etc/bastyle/config.yaml
 ```
 
-В `/etc/bastyle/config.yaml` укажите Telegram token и production-пути к SQLite:
+В `/etc/bastyle/config.yaml` укажите Telegram token и пути к SQLite:
 
 ```yaml
 matching:
@@ -364,72 +344,12 @@ Unit запускает бот от пользователя `bastyle_bot`, хр
 
 Если `/ban` отправил не администратор, бот не добавит контент в blacklist.
 
-## Проверка Перед Релизом
+## Что Изменилось В `v1.2.0`
 
-Тесты:
-
-```bash
-go test ./...
-```
-
-Benchmark поиска по video-like index:
-
-```bash
-go test ./internal/adapters/matching/videolike \
-  -bench BenchmarkVideoLikeLinearIndexSearch \
-  -run '^$' \
-  -benchtime=3s \
-  -count=1
-```
-
-Benchmark FFmpeg extraction:
-
-```bash
-go test ./internal/adapters/media \
-  -bench BenchmarkFFmpegFrameExtractorSmallAnimation \
-  -run '^$' \
-  -benchtime=3s \
-  -count=1
-```
-
-AI-vector quality и HNSW benchmark запускаются отдельно, потому что они могут
-качать десятки гигабайт изображений и долго считать embeddings:
-
-```bash
-make ai-data-10k
-make ai-data-50k
-make ai-data-100k
-```
-
-Эти команды берут уникальные изображения из COCO 2017 train через официальный
-`coco_url` из `annotations_trainval2017.zip` и пишут manifest в
-`data/ai-vector-benchmark/coco2017/manifest-<N>.jsonl`.
-
-Статичный quality-report по похожим и непохожим изображениям:
-
-```bash
-make ai-static-quality MANIFEST=data/ai-vector-benchmark/coco2017/manifest-10000.jsonl
-```
-
-Отчёт содержит false positive / false negative для набора thresholds и summary
-score-ов. Похожие изображения строятся из забаненных оригиналов через небольшой
-crop + resize + JPEG recompress, непохожие берутся из следующей части manifest.
-
-HNSW benchmark на 10k/50k/100k:
-
-```bash
-python3 -m ai_vector_service.benchmarks.embed_images \
-  --manifest data/ai-vector-benchmark/coco2017/manifest-100000.jsonl \
-  --output data/ai-vector-benchmark/coco100k-vectors.npz \
-  --batch-size 16
-
-make ai-hnsw-bench VECTORS=data/ai-vector-benchmark/coco100k-vectors.npz
-```
-
-Без `VECTORS` benchmark запускается на synthetic normalized vectors, что удобно
-для проверки роста latency без долгого прогона модели.
-
-## Что Изменилось В `v1.1.0`
-
-- добавлена поддержка блокировок gif и анимированных стикеров;
-- добавлены tests и benchmarks для video-like слоя.
+- бот может блокировать не только точные повторы, но и визуально похожие
+  варианты уже забаненных картинок, стикеров и GIF/video-like медиа;
+- `/ban` сохраняет признаки кадров для анимированного контента, поэтому
+  повторные похожие GIF, animations и video stickers могут удаляться
+  автоматически;
+- AI-vector matcher отключен по умолчанию и включается через config, чтобы
+  группы без этой функции продолжали работать в прежнем режиме.
