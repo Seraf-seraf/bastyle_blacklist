@@ -9,6 +9,7 @@ vendor/
 main
 bastyle
 build/bin/
+data/
 __pycache__/
 *.py[cod]
 .pytest_cache/

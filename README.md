@@ -294,8 +294,10 @@ make up
 make down
 ```
 
-Compose монтирует config в `/etc/bastyle/config.yaml`, данные в
-`/var/lib/bastyle` и ограничивает контейнер `512m` памяти.
+Compose монтирует config в `/etc/bastyle/config.yaml` для Go-бота, в
+`/app/configs/config.yaml` для AI-сервиса и общий volume `/var/lib/bastyle` для
+SQLite, Faiss index и runtime-данных. Контейнер Go-бота ограничен `512m`
+памяти, контейнер `bastyle-ai-vector` - `2g`.
 
 ## Systemd
 
@@ -389,6 +391,43 @@ go test ./internal/adapters/media \
   -benchtime=3s \
   -count=1
 ```
+
+AI-vector quality и HNSW benchmark запускаются отдельно, потому что они могут
+качать десятки гигабайт изображений и долго считать embeddings:
+
+```bash
+make ai-data-10k
+make ai-data-50k
+make ai-data-100k
+```
+
+Эти команды берут уникальные изображения из COCO 2017 train через официальный
+`coco_url` из `annotations_trainval2017.zip` и пишут manifest в
+`data/ai-vector-benchmark/coco2017/manifest-<N>.jsonl`.
+
+Статичный quality-report по похожим и непохожим изображениям:
+
+```bash
+make ai-static-quality MANIFEST=data/ai-vector-benchmark/coco2017/manifest-10000.jsonl
+```
+
+Отчёт содержит false positive / false negative для набора thresholds и summary
+score-ов. Похожие изображения строятся из забаненных оригиналов через небольшой
+crop + resize + JPEG recompress, непохожие берутся из следующей части manifest.
+
+HNSW benchmark на 10k/50k/100k:
+
+```bash
+python3 -m ai_vector_service.benchmarks.embed_images \
+  --manifest data/ai-vector-benchmark/coco2017/manifest-100000.jsonl \
+  --output data/ai-vector-benchmark/coco100k-vectors.npz \
+  --batch-size 16
+
+make ai-hnsw-bench VECTORS=data/ai-vector-benchmark/coco100k-vectors.npz
+```
+
+Без `VECTORS` benchmark запускается на synthetic normalized vectors, что удобно
+для проверки роста latency без долгого прогона модели.
 
 ## Что Изменилось В `v1.1.0`
 
