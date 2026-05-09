@@ -85,7 +85,7 @@ func (i *LinearIndex) AddMany(hashes []StoredImageHash) {
 }
 
 // Search возвращает true, если хотя бы один query hash находится в пределах
-// threshold от любого stored hash.
+// порог от любого stored hash.
 //
 // Это exact radius search по Hamming distance. Алгоритмически это O(N * Q * S),
 // где N — количество stored items, Q — количество query variants, S —
