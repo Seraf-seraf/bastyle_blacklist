@@ -25,6 +25,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -33,23 +34,25 @@ type Job struct {
 }
 
 func main() {
+	const methodCtx = "cmd/main"
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	configPath := flag.String("config", "configs/config.yaml", "path to yaml config")
+	configPath := flag.String("config", "configs/config.yaml", "путь к YAML-конфигу")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 
 	bot, err := newTelegramBot(cfg)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 
-	log.Printf("Authorized as %s", bot.Self.UserName)
+	log.Printf("Авторизован как %s", bot.Self.UserName)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = cfg.Telegram.UpdateTimeoutSeconds
@@ -57,17 +60,17 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 	go func() {
 		<-ctx.Done()
-		log.Println("Shutdown signal received")
+		log.Println("Получен сигнал завершения")
 		bot.StopReceivingUpdates()
 	}()
 
 	exactMatcher, err := exact.NewMatcher(cfg.Matching.Exact.Buffer)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	mediaDownloader, err := telegram.NewFileDownloader(bot)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	mediaExtractor := media.NewExtractor()
 	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
@@ -79,11 +82,11 @@ func main() {
 		cfg.Matching.ImageHash.DBPath,
 	)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	defer func() {
 		if err := imageHashMatcher.Close(); err != nil {
-			log.Printf("[ERROR]: %s", err)
+			logError(methodCtx, err)
 		}
 	}()
 
@@ -93,7 +96,7 @@ func main() {
 		cfg.MediaConfig.FFmpegTimeout.Value(),
 	)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	videoLikeMatcher, err := videolike.NewSQLiteMatcher(
 		ctx,
@@ -119,11 +122,11 @@ func main() {
 		},
 	)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	defer func() {
 		if err := videoLikeMatcher.Close(); err != nil {
-			log.Printf("[ERROR]: %s", err)
+			logError(methodCtx, err)
 		}
 	}()
 	matchers = append(matchers, videoLikeMatcher)
@@ -134,14 +137,14 @@ func main() {
 			cfg.Matching.AIVector.RequestTimeout.Value(),
 		)
 		if err != nil {
-			log.Panic(err)
+			panicWithContext(methodCtx, err)
 		}
 		aiVectorExtractor, err := media.NewFFmpegFrameExtractor(
 			cfg.MediaConfig.FFmpegBinary,
 			cfg.MediaConfig.FFmpegTimeout.Value(),
 		)
 		if err != nil {
-			log.Panic(err)
+			panicWithContext(methodCtx, err)
 		}
 		aiVectorMatcher, err := aivector.NewMatcher(aivector.Options{
 			Downloader:     mediaDownloader,
@@ -167,39 +170,39 @@ func main() {
 			},
 		})
 		if err != nil {
-			log.Panic(err)
+			panicWithContext(methodCtx, err)
 		}
 		matchers = append(matchers, aiVectorMatcher)
 	}
 
 	contentMatcher, err := composite.NewMatcher(matchers...)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	actions, err := telegram.NewBotActions(bot)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 	admin, err := telegram.NewAdminChecker(bot)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 
 	service, err := moderation.NewService(contentMatcher, admin, actions)
 	if err != nil {
-		log.Panic(err)
+		panicWithContext(methodCtx, err)
 	}
 
 	if cfg.Health.Enabled {
 		healthServer, err := startHealthServer(ctx, cfg.Health.Address())
 		if err != nil {
-			log.Panic(err)
+			panicWithContext(methodCtx, err)
 		}
 		defer func() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := healthServer.Shutdown(shutdownCtx); err != nil {
-				log.Printf("[ERROR]: %s", err)
+				logError(methodCtx, err)
 			}
 		}()
 	}
@@ -221,10 +224,12 @@ func main() {
 
 	close(jobs)
 	wg.Wait()
-	log.Println("Shutdown complete")
+	log.Println("Завершение работы выполнено")
 }
 
 func startHealthServer(ctx context.Context, address string) (*http.Server, error) {
+	const methodCtx = "cmd/startHealthServer"
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -234,7 +239,7 @@ func startHealthServer(ctx context.Context, address string) (*http.Server, error
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	server := &http.Server{
@@ -247,14 +252,14 @@ func startHealthServer(ctx context.Context, address string) (*http.Server, error
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("[ERROR]: %s", err)
+			logError(methodCtx, err)
 		}
 	}()
 
 	go func() {
-		log.Printf("Health server listening on %s", address)
+		log.Printf("Health-сервер слушает %s", address)
 		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("[ERROR]: %s", err)
+			logError(methodCtx, err)
 		}
 	}()
 
@@ -262,18 +267,22 @@ func startHealthServer(ctx context.Context, address string) (*http.Server, error
 }
 
 func newTelegramBot(cfg config.Config) (*tgbotapi.BotAPI, error) {
+	const methodCtx = "cmd/newTelegramBot"
+
 	if !cfg.Telegram.HTTPClient.Enabled {
-		return tgbotapi.NewBotAPI(cfg.Telegram.Token)
+		bot, err := tgbotapi.NewBotAPI(cfg.Telegram.Token)
+		return bot, apperrors.Wrap(methodCtx, err)
 	}
 
 	client, err := httpclient.New(httpclient.Options{
 		ProxyURL: cfg.Telegram.HTTPClient.ProxyURL,
 	})
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
-	return tgbotapi.NewBotAPIWithClient(cfg.Telegram.Token, tgbotapi.APIEndpoint, client)
+	bot, err := tgbotapi.NewBotAPIWithClient(cfg.Telegram.Token, tgbotapi.APIEndpoint, client)
+	return bot, apperrors.Wrap(methodCtx, err)
 }
 
 type moderationService interface {
@@ -281,6 +290,8 @@ type moderationService interface {
 }
 
 func worker(ctx context.Context, jobs <-chan Job, service moderationService) {
+	const methodCtx = "cmd/worker"
+
 	for job := range jobs {
 		msg := job.Update.Message
 		if msg == nil {
@@ -289,7 +300,15 @@ func worker(ctx context.Context, jobs <-chan Job, service moderationService) {
 
 		message := telegram.MessageFromTelegram(msg)
 		if err := service.HandleMessage(ctx, message); err != nil {
-			log.Printf("[ERROR]: %s", err)
+			logError(methodCtx, err)
 		}
 	}
+}
+
+func logError(methodCtx string, err error) {
+	log.Printf("[ERROR]: %s: %s", methodCtx, err)
+}
+
+func panicWithContext(methodCtx string, err error) {
+	log.Panicf("[ERROR]: %s: %s", methodCtx, err)
 }
