@@ -82,17 +82,17 @@ def parse_byte_size(value: object) -> int:
     for char in raw:
         if char.isdigit():
             if unit:
-                raise ValueError("byte size must contain number followed by unit")
+                raise ValueError("размер в байтах должен содержать число и единицу измерения")
             number += char
             continue
         if not char.isspace():
             unit += char
 
     if not number or not unit:
-        raise ValueError("byte size must contain number and unit")
+        raise ValueError("размер в байтах должен содержать число и единицу измерения")
 
     multiplier = BYTE_UNITS.get(unit.lower())
     if multiplier is None:
-        raise ValueError("unsupported byte size unit")
+        raise ValueError("неподдерживаемая единица размера")
 
     return int(number) * multiplier
