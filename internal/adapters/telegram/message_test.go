@@ -17,8 +17,8 @@ func TestMessageFromTelegramMapsAnimation(t *testing.T) {
 			"file_unique_id": "animation-unique",
 			"file_name": "sample.mp4",
 			"mime_type": "video/mp4",
-			"file_size": 1234,
-			"duration": 2,
+			"file_размер": 1234,
+			"длительность": 2,
 			"width": 320,
 			"height": 240
 		},
@@ -30,13 +30,13 @@ func TestMessageFromTelegramMapsAnimation(t *testing.T) {
 
 	content := MessageFromTelegram(msg).Content
 	if content == nil {
-		t.Fatal("content is nil")
+		t.Fatal("контент равен nil")
 	}
 	if content.Type != domain.MediaAnimation {
-		t.Fatalf("content.Type = %q, want %q", content.Type, domain.MediaAnimation)
+		t.Fatalf("тип контента = %q, ожидалось %q", content.Type, domain.MediaAnimation)
 	}
 	if content.FileID != "animation-file" {
-		t.Fatalf("content.FileID = %q, want animation file", content.FileID)
+		t.Fatalf("file_id контента = %q, ожидалось animation-file", content.FileID)
 	}
 }
 
@@ -55,10 +55,10 @@ func TestMessageFromTelegramMapsAnimatedSticker(t *testing.T) {
 
 	content := MessageFromTelegram(msg).Content
 	if content == nil {
-		t.Fatal("content is nil")
+		t.Fatal("контент равен nil")
 	}
 	if content.Type != domain.MediaStickerAnimated {
-		t.Fatalf("content.Type = %q, want %q", content.Type, domain.MediaStickerAnimated)
+		t.Fatalf("тип контента = %q, ожидалось %q", content.Type, domain.MediaStickerAnimated)
 	}
 }
 
@@ -73,16 +73,16 @@ func TestMessageFromTelegramMapsNonAnimatedStickerByFileTypeLater(t *testing.T) 
 			"height": 512,
 			"is_animated": false,
 			"is_video": true,
-			"file_size": 257643
+			"file_размер": 257643
 		}
 	}`)
 
 	content := MessageFromTelegram(msg).Content
 	if content == nil {
-		t.Fatal("content is nil")
+		t.Fatal("контент равен nil")
 	}
 	if content.Type != domain.MediaStickerStatic {
-		t.Fatalf("content.Type = %q, want %q", content.Type, domain.MediaStickerStatic)
+		t.Fatalf("тип контента = %q, ожидалось %q", content.Type, domain.MediaStickerStatic)
 	}
 }
 
@@ -94,8 +94,8 @@ func TestMessageFromTelegramIgnoresVideo(t *testing.T) {
 			"file_id": "video-file",
 			"file_unique_id": "video-unique",
 			"mime_type": "video/mp4",
-			"file_size": 123456,
-			"duration": 60,
+			"file_размер": 123456,
+			"длительность": 60,
 			"width": 1280,
 			"height": 720
 		}
@@ -103,7 +103,7 @@ func TestMessageFromTelegramIgnoresVideo(t *testing.T) {
 
 	content := MessageFromTelegram(msg).Content
 	if content != nil {
-		t.Fatalf("content = %#v, want nil", content)
+		t.Fatalf("контент = %#v, ожидался nil", content)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestMessageFromTelegramParsesBotCommand(t *testing.T) {
 
 	message := MessageFromTelegram(msg)
 	if message.Command != "ban" {
-		t.Fatalf("message.Command = %q, want ban", message.Command)
+		t.Fatalf("команда сообщения = %q, ожидалось ban", message.Command)
 	}
 }
 
@@ -134,8 +134,8 @@ func TestMessageFromTelegramUsesParentChatForReplyWithoutChat(t *testing.T) {
 				"file_unique_id": "animation-unique",
 				"file_name": "sample.mp4",
 				"mime_type": "video/mp4",
-				"file_size": 1234,
-				"duration": 2,
+				"file_размер": 1234,
+				"длительность": 2,
 				"width": 320,
 				"height": 240
 			}
@@ -144,10 +144,10 @@ func TestMessageFromTelegramUsesParentChatForReplyWithoutChat(t *testing.T) {
 
 	message := MessageFromTelegram(msg)
 	if message.ReplyTo == nil {
-		t.Fatal("reply is nil")
+		t.Fatal("ответ равен nil")
 	}
 	if message.ReplyTo.ChatID != 10 {
-		t.Fatalf("reply chat id = %d, want 10", message.ReplyTo.ChatID)
+		t.Fatalf("chat_id ответа = %d, ожидалось 10", message.ReplyTo.ChatID)
 	}
 }
 
