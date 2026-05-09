@@ -20,20 +20,20 @@ func TestMatcherBlockSendsFramesToClient(t *testing.T) {
 	}
 
 	if len(client.banRequests) != 1 {
-		t.Fatalf("ban requests = %d, want 1", len(client.banRequests))
+		t.Fatalf("запросы бана = %d, ожидалось 1", len(client.banRequests))
 	}
 	request := client.banRequests[0]
 	if request.FileUniqueID != content.FileUniqueID {
-		t.Fatalf("file unique id = %q, want %q", request.FileUniqueID, content.FileUniqueID)
+		t.Fatalf("file_unique_id = %q, ожидалось %q", request.FileUniqueID, content.FileUniqueID)
 	}
 	if request.MediaType != string(content.Type) {
-		t.Fatalf("media type = %q, want %q", request.MediaType, content.Type)
+		t.Fatalf("тип медиа = %q, ожидалось %q", request.MediaType, content.Type)
 	}
 	if len(request.Frames) != 1 {
-		t.Fatalf("frames = %d, want 1", len(request.Frames))
+		t.Fatalf("кадры = %d, ожидалось 1", len(request.Frames))
 	}
 	if len(request.Frames[0].Data) == 0 {
-		t.Fatal("expected encoded frame data")
+		t.Fatal("ожидалось: закодированные данные кадра")
 	}
 }
 
@@ -53,7 +53,7 @@ func TestMatcherIsBlockedReturnsStaticMatch(t *testing.T) {
 	}
 
 	if !blocked {
-		t.Fatal("expected static match")
+		t.Fatal("ожидалось: совпадение статичного медиа")
 	}
 }
 
@@ -82,7 +82,7 @@ func TestMatcherIsBlockedAppliesVideoLikeRule(t *testing.T) {
 	}
 
 	if !blocked {
-		t.Fatal("expected video-like match")
+		t.Fatal("ожидалось: video-like совпадение")
 	}
 }
 
@@ -100,21 +100,21 @@ func TestMatcherSkipsUnsupportedContent(t *testing.T) {
 	}
 
 	if blocked {
-		t.Fatal("expected unsupported content to be skipped")
+		t.Fatal("ожидалось: неподдерживаемый контент должен быть пропущен")
 	}
 	if len(client.searchRequests) != 0 {
-		t.Fatalf("search requests = %d, want 0", len(client.searchRequests))
+		t.Fatalf("поисковые запросы = %d, ожидалось 0", len(client.searchRequests))
 	}
 }
 
 func TestMatcherReturnsClientError(t *testing.T) {
-	expectedErr := errors.New("client failed")
+	expectedErr := errors.New("ошибка клиента")
 	client := &fakeClient{searchErr: expectedErr}
 	matcher := newTestMatcher(t, client)
 
 	_, err := matcher.IsBlocked(context.Background(), testPhotoContent())
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf("err = %v, want %v", err, expectedErr)
+		t.Fatalf("ошибка = %v, ожидалось %v", err, expectedErr)
 	}
 }
 
