@@ -13,9 +13,7 @@ type ChatType string
 
 const (
 	ChatPrivate    ChatType = "private"
-	ChatGroup      ChatType = "group"
 	ChatSupergroup ChatType = "supergroup"
-	ChatChannel    ChatType = "channel"
 )
 
 type Content struct {
