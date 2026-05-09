@@ -2,7 +2,6 @@ package media
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
 const (
@@ -26,11 +26,13 @@ type ffmpegFrameExtractor struct {
 }
 
 func NewFFmpegFrameExtractor(binary string, timeout time.Duration) (ports.MediaExtractor, error) {
+	const methodCtx = "media/NewFFmpegFrameExtractor"
+
 	if binary == "" {
-		return nil, errors.New("ffmpeg frame extractor binary is not configured")
+		return nil, apperrors.New(methodCtx, "бинарный файл ffmpeg для извлечения кадров не настроен")
 	}
 	if timeout <= 0 {
-		return nil, errors.New("ffmpeg frame extractor timeout must be positive")
+		return nil, apperrors.New(methodCtx, "таймаут извлечения кадров ffmpeg должен быть положительным")
 	}
 
 	return &ffmpegFrameExtractor{
@@ -40,44 +42,48 @@ func NewFFmpegFrameExtractor(binary string, timeout time.Duration) (ports.MediaE
 }
 
 func (e *ffmpegFrameExtractor) Extract(ctx context.Context, media domain.MediaFile, plan domain.MediaExtractionPlan) (domain.ExtractedMedia, error) {
+	const methodCtx = "media/ffmpegFrameExtractor.Extract"
+
 	if err := ctx.Err(); err != nil {
-		return domain.ExtractedMedia{}, err
+		return domain.ExtractedMedia{}, apperrors.Wrap(methodCtx, err)
 	}
 	if err := validateFFmpegPlan(plan); err != nil {
-		return domain.ExtractedMedia{}, err
+		return domain.ExtractedMedia{}, apperrors.Wrap(methodCtx, err)
 	}
 	if len(media.Data) == 0 {
-		return domain.ExtractedMedia{}, errors.New("ffmpeg frame extractor media data is empty")
+		return domain.ExtractedMedia{}, apperrors.New(methodCtx, "данные медиа для извлечения кадров ffmpeg пустые")
 	}
 
 	tempDir, err := os.MkdirTemp("", "bastyle-frames-*")
 	if err != nil {
-		return domain.ExtractedMedia{}, err
+		return domain.ExtractedMedia{}, apperrors.Wrap(methodCtx, err)
 	}
 	defer os.RemoveAll(tempDir)
 
 	inputPath := filepath.Join(tempDir, "input"+mediaFileExtension(media.FilePath))
 	if err := os.WriteFile(inputPath, media.Data, 0600); err != nil {
-		return domain.ExtractedMedia{}, err
+		return domain.ExtractedMedia{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	framePattern := filepath.Join(tempDir, "frame-%03d.png")
 	if err := e.runFFmpeg(ctx, inputPath, framePattern, plan); err != nil {
-		return domain.ExtractedMedia{}, err
+		return domain.ExtractedMedia{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	frames, err := readFrameImages(tempDir, plan.MaxFrames)
 	if err != nil {
-		return domain.ExtractedMedia{}, err
+		return domain.ExtractedMedia{}, apperrors.Wrap(methodCtx, err)
 	}
 	if len(frames) == 0 {
-		return domain.ExtractedMedia{}, errors.New("ffmpeg frame extractor returned no frames")
+		return domain.ExtractedMedia{}, apperrors.New(methodCtx, "извлечение кадров ffmpeg не вернуло кадров")
 	}
 
 	return domain.ExtractedMedia{Frames: frames}, nil
 }
 
 func (e *ffmpegFrameExtractor) runFFmpeg(ctx context.Context, inputPath string, framePattern string, plan domain.MediaExtractionPlan) error {
+	const methodCtx = "media/ffmpegFrameExtractor.runFFmpeg"
+
 	ffmpegCtx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
 
@@ -96,33 +102,35 @@ func (e *ffmpegFrameExtractor) runFFmpeg(ctx context.Context, inputPath string, 
 
 	if err := cmd.Run(); err != nil {
 		if ffmpegCtx.Err() != nil {
-			return ffmpegCtx.Err()
+			return apperrors.Wrap(methodCtx, ffmpegCtx.Err())
 		}
 
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	return nil
 }
 
 func validateFFmpegPlan(plan domain.MediaExtractionPlan) error {
+	const methodCtx = "media/validateFFmpegPlan"
+
 	if plan.MaxFrames <= 0 {
-		return errors.New("ffmpeg frame extractor max frames must be positive")
+		return apperrors.New(methodCtx, "максимальное количество кадров ffmpeg должно быть положительным")
 	}
 	if plan.MaxFrames > maxFrameExtractionFrames {
-		return errors.New("ffmpeg frame extractor max frames is too large")
+		return apperrors.New(methodCtx, "максимальное количество кадров ffmpeg слишком большое")
 	}
 	if plan.TargetWidth <= 0 {
-		return errors.New("ffmpeg frame extractor target width must be positive")
+		return apperrors.New(methodCtx, "целевая ширина кадра ffmpeg должна быть положительной")
 	}
 	if plan.TargetWidth > maxFrameExtractionDimension {
-		return errors.New("ffmpeg frame extractor target width is too large")
+		return apperrors.New(methodCtx, "целевая ширина кадра ffmpeg слишком большая")
 	}
 	if plan.TargetHeight <= 0 {
-		return errors.New("ffmpeg frame extractor target height must be positive")
+		return apperrors.New(methodCtx, "целевая высота кадра ffmpeg должна быть положительной")
 	}
 	if plan.TargetHeight > maxFrameExtractionDimension {
-		return errors.New("ffmpeg frame extractor target height is too large")
+		return apperrors.New(methodCtx, "целевая высота кадра ffmpeg слишком большая")
 	}
 
 	return nil
@@ -145,9 +153,11 @@ func mediaFileExtension(filePath string) string {
 }
 
 func readFrameImages(dir string, maxFrames int) ([]domain.ExtractedFrame, error) {
+	const methodCtx = "media/readFrameImages"
+
 	paths, err := filepath.Glob(filepath.Join(dir, "frame-*.png"))
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	sort.Strings(paths)
 	if len(paths) > maxFrames {
@@ -158,16 +168,16 @@ func readFrameImages(dir string, maxFrames int) ([]domain.ExtractedFrame, error)
 	for i, path := range paths {
 		file, err := os.Open(path)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		img, err := decodeBoundedImage(file)
 		closeErr := file.Close()
 		if err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 		if closeErr != nil {
-			return nil, closeErr
+			return nil, apperrors.Wrap(methodCtx, closeErr)
 		}
 
 		frames = append(frames, domain.ExtractedFrame{
