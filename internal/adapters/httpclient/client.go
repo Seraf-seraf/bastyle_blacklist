@@ -3,6 +3,8 @@ package httpclient
 import (
 	"net/http"
 	"net/url"
+
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
 type Options struct {
@@ -10,11 +12,13 @@ type Options struct {
 }
 
 func New(options Options) (*http.Client, error) {
+	const methodCtx = "httpclient/New"
+
 	proxy := http.ProxyFromEnvironment
 	if options.ProxyURL != "" {
 		parsedProxyURL, err := url.Parse(options.ProxyURL)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 		proxy = http.ProxyURL(parsedProxyURL)
 	}
