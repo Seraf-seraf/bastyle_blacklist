@@ -60,7 +60,7 @@ class TransformersImageEmbeddingModel:
 
     def embed(self, images: Sequence[Image.Image]) -> EmbeddingResult:
         if not images:
-            raise ValueError("at least one image is required")
+            raise ValueError("требуется хотя бы одно изображение")
 
         inputs = self._processor(list(images), return_tensors="pt")
         inputs = {key: value.to(self._device) for key, value in inputs.items()}
