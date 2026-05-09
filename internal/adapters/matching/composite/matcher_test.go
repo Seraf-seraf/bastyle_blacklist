@@ -20,13 +20,13 @@ func (fakeMatcher) IsBlocked(context.Context, domain.Content) (bool, error) {
 func TestNewMatcherRejectsEmptyList(t *testing.T) {
 	_, err := NewMatcher()
 	if err == nil {
-		t.Fatal("expected empty matcher list to be rejected")
+		t.Fatal("ожидалась ошибка для пустого списка matcher-ов")
 	}
 }
 
 func TestNewMatcherRejectsNilMatcher(t *testing.T) {
 	_, err := NewMatcher(fakeMatcher{}, nil)
 	if err == nil {
-		t.Fatal("expected nil matcher to be rejected")
+		t.Fatal("ожидалось, что матчер равен nil будет отклонен")
 	}
 }
