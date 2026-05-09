@@ -19,10 +19,10 @@ func TestFFmpegFrameExtractorIntegrationMP4AnimationSample(t *testing.T) {
 
 	extracted, err := extractor.Extract(context.Background(), media, smallFFmpegIntegrationPlan())
 	if err != nil {
-		t.Fatalf("extract mp4 animation sample: %v", err)
+		t.Fatalf("извлечение кадров из примера mp4-анимации: %v", err)
 	}
 	if len(extracted.Frames) == 0 {
-		t.Fatal("expected extracted frames from mp4 animation sample")
+		t.Fatal("ожидалось: извлеченные кадры из mp4-анимации")
 	}
 }
 
@@ -34,10 +34,10 @@ func TestFFmpegFrameExtractorIntegrationWEBMStickerSample(t *testing.T) {
 
 	extracted, err := extractor.Extract(context.Background(), media, smallFFmpegIntegrationPlan())
 	if err != nil {
-		t.Fatalf("extract webm sticker sample: %v", err)
+		t.Fatalf("извлечение кадров из примера webm-стикера: %v", err)
 	}
 	if len(extracted.Frames) == 0 {
-		t.Fatal("expected extracted frames from webm sticker sample")
+		t.Fatal("ожидалось: извлеченные кадры из webm-стикера")
 	}
 }
 
@@ -55,7 +55,7 @@ func TestFFmpegFrameExtractorIntegrationBrokenFile(t *testing.T) {
 		Data:     []byte("not a real video"),
 	}, smallFFmpegIntegrationPlan())
 	if err == nil {
-		t.Fatal("expected broken media file to fail extraction")
+		t.Fatal("ожидалось: поврежденный медиафайл должен вернуть ошибку извлечения")
 	}
 }
 
@@ -66,7 +66,7 @@ func TestFFmpegFrameExtractorIntegrationTimeout(t *testing.T) {
 
 	_, err := extractor.Extract(context.Background(), media, smallFFmpegIntegrationPlan())
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("extract error = %v, want deadline exceeded", err)
+		t.Fatalf("ошибка извлечения = %v, ожидалось превышение дедлайна", err)
 	}
 }
 
@@ -81,20 +81,20 @@ func TestFFmpegFrameExtractorIntegrationFrameLimitCase(t *testing.T) {
 		TargetHeight: 64,
 	})
 	if err == nil {
-		t.Fatal("expected oversized extraction plan to be rejected before ffmpeg runs")
+		t.Fatal("ожидалось: слишком большой план извлечения будет отклонен до запуска ffmpeg")
 	}
 }
 
 func BenchmarkFFmpegFrameExtractorSmallAnimation(b *testing.B) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		b.Skip("ffmpeg is not available")
+		b.Skip("ffmpeg недоступен")
 	}
 
 	media := generatedFFmpegMediaB(b, ffmpeg, "animation.mp4")
 	extractor, err := NewFFmpegFrameExtractor(ffmpeg, 5*time.Second)
 	if err != nil {
-		b.Fatalf("new extractor: %v", err)
+		b.Fatalf("создание экстрактора: %v", err)
 	}
 	plan := smallFFmpegIntegrationPlan()
 
@@ -103,7 +103,7 @@ func BenchmarkFFmpegFrameExtractorSmallAnimation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		if _, err := extractor.Extract(context.Background(), media, plan); err != nil {
-			b.Fatalf("extract small animation: %v", err)
+			b.Fatalf("извлечение короткой анимации: %v", err)
 		}
 	}
 }
@@ -113,7 +113,7 @@ func requireFFmpeg(t *testing.T) string {
 
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		t.Skip("ffmpeg is not available")
+		t.Skip("ffmpeg недоступен")
 	}
 
 	return ffmpeg
@@ -124,7 +124,7 @@ func newRealFFmpegExtractor(t *testing.T, binary string, timeout time.Duration) 
 
 	extractor, err := NewFFmpegFrameExtractor(binary, timeout)
 	if err != nil {
-		t.Fatalf("new ffmpeg extractor: %v", err)
+		t.Fatalf("создание ffmpeg-экстрактора: %v", err)
 	}
 
 	return extractor
@@ -157,7 +157,7 @@ func generatedFFmpegMediaB(b *testing.B, ffmpeg string, name string) domain.Medi
 	writeGeneratedFFmpegMediaB(b, ffmpeg, path)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		b.Fatalf("read generated media: %v", err)
+		b.Fatalf("чтение сгенерированного медиа: %v", err)
 	}
 
 	return domain.MediaFile{
@@ -178,7 +178,7 @@ func writeGeneratedFFmpegMedia(t *testing.T, ffmpeg string, path string) {
 	t.Helper()
 
 	if err := runGenerateMedia(ffmpeg, path); err != nil {
-		t.Fatalf("generate media sample: %v", err)
+		t.Fatalf("генерация медиа-примера: %v", err)
 	}
 }
 
@@ -186,7 +186,7 @@ func writeGeneratedFFmpegMediaB(b *testing.B, ffmpeg string, path string) {
 	b.Helper()
 
 	if err := runGenerateMedia(ffmpeg, path); err != nil {
-		b.Fatalf("generate media sample: %v", err)
+		b.Fatalf("генерация медиа-примера: %v", err)
 	}
 }
 
@@ -195,7 +195,7 @@ func readGeneratedFFmpegMedia(t *testing.T, path string) domain.MediaFile {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read generated media: %v", err)
+		t.Fatalf("чтение сгенерированного медиа: %v", err)
 	}
 
 	return domain.MediaFile{
