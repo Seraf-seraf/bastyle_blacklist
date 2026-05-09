@@ -2,13 +2,13 @@
 //
 // Matcher скачивает контент, извлекает первый кадр и считает goimagehash
 // PerceptionHash. pHash используется как MVP image fingerprint, потому что он
-// достаточно устойчив к resize, recompression и легким изменениям цвета.
+// достаточно устойчив к reразмер, recompression и легким изменениям цвета.
 //
 // Для каждого изображения сохраняются pHash варианты для 0, 90, 180 и 270
 // градусов. Hash values хранятся как uint64, а поиск идет линейным индексом
 // через Hamming distance:
 //
-//	bits.OnesCount64(query ^ stored) <= threshold
+//	bits.OnesCount64(query ^ stored) <= порог
 //
 // Такой индекс прост, не аллоцирует на hot path и подходит как baseline для
 // blacklist порядка десятков тысяч записей. Если blacklist вырастет или
