@@ -2,13 +2,13 @@ package videolike
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
 type matcher struct {
@@ -37,8 +37,10 @@ func NewMatcher(
 	limits Limits,
 	rule MatchRule,
 ) (*matcher, error) {
+	const methodCtx = "videolike/NewMatcher"
+
 	if err := validateMatcherConfig(downloader, extractor, threshold, buffer, plan, limits, rule); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	return &matcher{
@@ -62,28 +64,30 @@ func NewSQLiteMatcher(
 	limits Limits,
 	rule MatchRule,
 ) (*matcher, error) {
+	const methodCtx = "videolike/NewSQLiteMatcher"
+
 	if dbPath == "" {
-		return nil, errors.New("videolike matcher db path is not configured")
+		return nil, apperrors.New(methodCtx, "путь к БД videolike-матчер не настроен")
 	}
 	if err := validateMatcherConfig(downloader, extractor, threshold, buffer, plan, limits, rule); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	store, err := OpenSQLiteStore(ctx, dbPath)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	storedHashes, err := store.load(ctx)
 	if err != nil {
 		_ = store.close()
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	matcher, err := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes), plan, limits, rule)
 	if err != nil {
 		_ = store.close()
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	matcher.store = store
 	matcher.index.AddMany(storedHashes)
@@ -100,49 +104,55 @@ func validateMatcherConfig(
 	limits Limits,
 	rule MatchRule,
 ) error {
+	const methodCtx = "videolike/validateMatcherConfig"
+
 	if downloader == nil {
-		return errors.New("videolike matcher downloader is not configured")
+		return apperrors.New(methodCtx, "загрузчик videolike-матчер не настроен")
 	}
 	if extractor == nil {
-		return errors.New("videolike matcher extractor is not configured")
+		return apperrors.New(methodCtx, "извлекатель videolike-матчер не настроен")
 	}
 	if threshold < 0 {
-		return errors.New("videolike matcher threshold must be non-negative")
+		return apperrors.New(methodCtx, "порог videolike-матчер не должен быть отрицательным")
 	}
 	if buffer < 0 {
-		return errors.New("videolike matcher buffer must be non-negative")
+		return apperrors.New(methodCtx, "буфер videolike-матчер не должен быть отрицательным")
 	}
 	if plan.MaxFrames <= 0 {
-		return errors.New("videolike matcher max frames must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: максимальное количество кадров должно быть положительным")
 	}
 	if plan.TargetWidth <= 0 {
-		return errors.New("videolike matcher target width must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: целевая ширина должна быть положительной")
 	}
 	if plan.TargetHeight <= 0 {
-		return errors.New("videolike matcher target height must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: целевая высота должна быть положительной")
 	}
 	if err := limits.validate(); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if err := rule.validate(); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	return nil
 }
 
 func (m *matcher) Close() error {
+	const methodCtx = "videolike/matcher.Close"
+
 	if m.store == nil {
 		return nil
 	}
 
-	return m.store.close()
+	return apperrors.Wrap(methodCtx, m.store.close())
 }
 
 func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+	const methodCtx = "videolike/matcher.IsBlocked"
+
 	media, supported, err := m.mediaForContent(ctx, content)
 	if err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 	if !supported {
 		return false, nil
@@ -150,7 +160,7 @@ func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 
 	fingerprint, err := m.fingerprint(ctx, media)
 	if err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 
 	_, matched := m.index.Search(fingerprint, m.threshold)
@@ -158,25 +168,27 @@ func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 }
 
 func (m *matcher) Block(ctx context.Context, content domain.Content) error {
+	const methodCtx = "videolike/matcher.Block"
+
 	media, supported, err := m.mediaForContent(ctx, content)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if !supported {
 		return nil
 	}
 	if m.store == nil {
-		return errors.New("videolike store is not configured")
+		return apperrors.New(methodCtx, "хранилище videolike не настроено")
 	}
 
 	fingerprint, err := m.fingerprint(ctx, media)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	id, err := m.store.insert(ctx, fingerprint)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	fingerprint.ID = id
 
@@ -185,11 +197,15 @@ func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 }
 
 func (m *matcher) supports(ctx context.Context, content domain.Content) (bool, error) {
+	const methodCtx = "videolike/matcher.supports"
+
 	_, supported, err := m.mediaForContent(ctx, content)
-	return supported, err
+	return supported, apperrors.Wrap(methodCtx, err)
 }
 
 func (m *matcher) mediaForContent(ctx context.Context, content domain.Content) (domain.MediaFile, bool, error) {
+	const methodCtx = "videolike/matcher.mediaForContent"
+
 	if !content.CanDownload() {
 		return domain.MediaFile{}, false, nil
 	}
@@ -197,33 +213,33 @@ func (m *matcher) mediaForContent(ctx context.Context, content domain.Content) (
 	switch content.Type {
 	case domain.MediaAnimation:
 		if err := m.checkAnimationMetadata(content); err != nil {
-			return domain.MediaFile{}, false, err
+			return domain.MediaFile{}, false, apperrors.Wrap(methodCtx, err)
 		}
 
 		media, err := m.downloader.Download(ctx, content)
 		if err != nil {
-			return domain.MediaFile{}, false, err
+			return domain.MediaFile{}, false, apperrors.Wrap(methodCtx, err)
 		}
 		if err := m.checkAnimationFile(media); err != nil {
-			return domain.MediaFile{}, false, err
+			return domain.MediaFile{}, false, apperrors.Wrap(methodCtx, err)
 		}
 
 		return media, true, nil
 	case domain.MediaStickerStatic:
 		if err := m.checkVideoStickerMetadata(content); err != nil {
-			return domain.MediaFile{}, false, err
+			return domain.MediaFile{}, false, apperrors.Wrap(methodCtx, err)
 		}
 
 		media, err := m.downloader.Download(ctx, content)
 		if err != nil {
-			return domain.MediaFile{}, false, err
+			return domain.MediaFile{}, false, apperrors.Wrap(methodCtx, err)
 		}
 		if !isWebMFile(media.FilePath) {
 			return domain.MediaFile{}, false, nil
 		}
 
 		if err := m.checkVideoStickerFile(media); err != nil {
-			return domain.MediaFile{}, false, err
+			return domain.MediaFile{}, false, apperrors.Wrap(methodCtx, err)
 		}
 
 		return media, true, nil
@@ -233,80 +249,95 @@ func (m *matcher) mediaForContent(ctx context.Context, content domain.Content) (
 }
 
 func (m *matcher) checkAnimationMetadata(content domain.Content) error {
+	const methodCtx = "videolike/matcher.checkAnimationMetadata"
+
 	if contentDuration(content) > m.limits.MaxAnimationDuration {
-		return errors.New("videolike matcher: animation duration exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: длительность анимации превышает лимит")
 	}
 	if content.SizeBytes > m.limits.MaxAnimationSize {
-		return errors.New("videolike matcher: animation size exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: размер анимации превышает лимит")
 	}
 
 	return nil
 }
 
 func (m *matcher) checkAnimationFile(media domain.MediaFile) error {
+	const methodCtx = "videolike/matcher.checkAnimationFile"
+
 	if media.Content.SizeBytes > m.limits.MaxAnimationSize {
-		return errors.New("videolike matcher: animation size exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: размер анимации превышает лимит")
 	}
 	if int64(len(media.Data)) > m.limits.MaxAnimationSize {
-		return errors.New("videolike matcher: animation downloaded size exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: размер загруженной анимации превышает лимит")
 	}
 
 	return nil
 }
 
 func (m *matcher) checkVideoStickerMetadata(content domain.Content) error {
+	const methodCtx = "videolike/matcher.checkVideoStickerMetadata"
+
 	if contentDuration(content) > m.limits.MaxVideoStickerDuration {
-		return errors.New("videolike matcher: video sticker duration exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: длительность видеостикера превышает лимит")
 	}
 
 	return nil
 }
 
 func (m *matcher) fingerprint(ctx context.Context, media domain.MediaFile) (StoredVideoLikeHash, error) {
+	const methodCtx = "videolike/matcher.fingerprint"
+
 	extracted, err := m.extractor.Extract(ctx, media, m.plan)
 	if err != nil {
-		return StoredVideoLikeHash{}, err
+		return StoredVideoLikeHash{}, apperrors.Wrap(methodCtx, err)
 	}
 
-	return fingerprintVideoLike(media.Content, extracted)
+	fingerprint, err := fingerprintVideoLike(media.Content, extracted)
+	return fingerprint, apperrors.Wrap(methodCtx, err)
 }
 
 func (m *matcher) checkVideoStickerFile(media domain.MediaFile) error {
+	const methodCtx = "videolike/matcher.checkVideoStickerFile"
+
 	if media.Content.SizeBytes > m.limits.MaxVideoStickerSize {
-		return errors.New("videolike matcher: video sticker size exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: размер видеостикера превышает лимит")
 	}
 	if int64(len(media.Data)) > m.limits.MaxVideoStickerSize {
-		return errors.New("videolike matcher: video sticker downloaded size exceeds limit")
+		return apperrors.New(methodCtx, "videolike-матчер: размер загруженного видеостикера превышает лимит")
 	}
 
 	return nil
 }
 
 func (l Limits) validate() error {
+	const methodCtx = "videolike/Limits.validate"
+
 	if l.MaxAnimationDuration <= 0 {
-		return errors.New("videolike matcher max animation duration must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: максимальная длительность анимации должна быть положительной")
 	}
 	if l.MaxVideoStickerDuration <= 0 {
-		return errors.New("videolike matcher max video sticker duration must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: максимальная длительность видеостикера должна быть положительной")
 	}
 	if l.MaxAnimationSize <= 0 {
-		return errors.New("videolike matcher max animation size must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: максимальный размер анимации должен быть положительным")
 	}
 	if l.MaxVideoStickerSize <= 0 {
-		return errors.New("videolike matcher max video sticker size must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: максимальный размер видеостикера должен быть положительным")
 	}
 	return nil
 }
 
 func (r MatchRule) validate() error {
+	const methodCtx = "videolike/MatchRule.validate"
+
 	if r == (MatchRule{}) {
 		return nil
 	}
 	if r.MinMatchedFrames <= 0 {
-		return errors.New("videolike matcher min matched frames must be positive")
+		return apperrors.New(methodCtx, "videolike-матчер: минимальное количество совпавших кадров должно быть положительным")
 	}
 	if r.MinMatchedRatio <= 0 || r.MinMatchedRatio > 1 {
-		return errors.New("videolike matcher min matched ratio must be between 0 and 1")
+		return apperrors.New(methodCtx, "videolike-матчер: минимальная доля совпавших кадров должна быть от 0 до 1")
 	}
 
 	return nil
