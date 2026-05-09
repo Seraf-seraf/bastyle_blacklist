@@ -80,10 +80,10 @@ func TestAppE2EWithoutTelegramBanDeletesRepeatedAndSimilarPhoto(t *testing.T) {
 		{chatID: 100, messageID: 40},
 	}
 	if !reflect.DeepEqual(actions.deleted, wantDeleted) {
-		t.Fatalf("deleted messages = %#v, want %#v", actions.deleted, wantDeleted)
+		t.Fatalf("удаленные сообщения = %#v, ожидалось %#v", actions.deleted, wantDeleted)
 	}
 	if len(actions.sent) != 0 {
-		t.Fatalf("sent messages = %#v, want empty", actions.sent)
+		t.Fatalf("отправленные сообщения = %#v, ожидался пустой список", actions.sent)
 	}
 }
 
@@ -125,14 +125,14 @@ func TestAppE2EWithoutTelegramNonAdminBanDoesNotBlockPhoto(t *testing.T) {
 	}
 
 	if len(actions.deleted) != 0 {
-		t.Fatalf("deleted messages = %#v, want empty", actions.deleted)
+		t.Fatalf("удаленные сообщения = %#v, ожидался пустой список", actions.deleted)
 	}
 
 	wantSent := []sentMessage{
 		{chatID: 100, text: "Команда доступна только админам"},
 	}
 	if !reflect.DeepEqual(actions.sent, wantSent) {
-		t.Fatalf("sent messages = %#v, want %#v", actions.sent, wantSent)
+		t.Fatalf("отправленные сообщения = %#v, ожидалось %#v", actions.sent, wantSent)
 	}
 }
 
@@ -146,7 +146,7 @@ func newE2EModerationService(
 
 	exactMatcher, err := exact.NewMatcher(10)
 	if err != nil {
-		t.Fatalf("new exact matcher: %v", err)
+		t.Fatalf("создание exact-матчера: %v", err)
 	}
 	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
 		context.Background(),
@@ -157,20 +157,20 @@ func newE2EModerationService(
 		t.TempDir()+"/imagehash.sqlite",
 	)
 	if err != nil {
-		t.Fatalf("new imagehash matcher: %v", err)
+		t.Fatalf("создание imagehash-матчера: %v", err)
 	}
 	contentMatcher, err := composite.NewMatcher(exactMatcher, imageHashMatcher)
 	if err != nil {
-		t.Fatalf("new composite matcher: %v", err)
+		t.Fatalf("создание composite-матчера: %v", err)
 	}
 	service, err := NewService(contentMatcher, admins, actions)
 	if err != nil {
-		t.Fatalf("new moderation service: %v", err)
+		t.Fatalf("создание сервиса модерации: %v", err)
 	}
 
 	return service, func() {
 		if err := imageHashMatcher.Close(); err != nil {
-			t.Fatalf("close imagehash matcher: %v", err)
+			t.Fatalf("закрытие imagehash-матчера: %v", err)
 		}
 	}
 }
