@@ -52,16 +52,16 @@ func TestMatcherBlocksSameWhiteImageBackgroundWithDifferentFileID(t *testing.T) 
 	}, 8, 2)
 
 	if err := matcher.Block(ctx, blockedContent); err != nil {
-		t.Fatalf("block white image: %v", err)
+		t.Fatalf("блокировка белого изображения: %v", err)
 	}
 
 	blocked, err := matcher.IsBlocked(ctx, candidateContent)
 	if err != nil {
-		t.Fatalf("check candidate white image: %v", err)
+		t.Fatalf("проверка белого изображения-кандидата: %v", err)
 	}
 
 	if !blocked {
-		t.Fatal("expected white image with another file id to be blocked by perceptual hash")
+		t.Fatal("ожидалось: белое изображение с другим file_id должно быть заблокировано перцептивным хешем")
 	}
 }
 
@@ -89,16 +89,16 @@ func TestMatcherBlocksRotatedImageWithPerceptionHashVariants(t *testing.T) {
 	}, 8, 2)
 
 	if err := matcher.Block(ctx, blockedContent); err != nil {
-		t.Fatalf("block image: %v", err)
+		t.Fatalf("блокировка изображения: %v", err)
 	}
 
 	blocked, err := matcher.IsBlocked(ctx, candidateContent)
 	if err != nil {
-		t.Fatalf("check rotated candidate image: %v", err)
+		t.Fatalf("проверка повернутого изображения-кандидата: %v", err)
 	}
 
 	if !blocked {
-		t.Fatal("expected rotated image to be blocked by perception hash variants")
+		t.Fatal("ожидалось: повернутое изображение должно быть заблокировано вариантами перцептивного хеша")
 	}
 }
 
@@ -111,12 +111,12 @@ func TestNewMatcherRejectsInvalidConfig(t *testing.T) {
 		buffer     int
 	}{
 		{
-			name:      "negative threshold",
+			name:      "negative порог",
 			extractor: fakeExtractor{},
 			threshold: -1,
 		},
 		{
-			name:      "negative buffer",
+			name:      "отрицательный буфер",
 			extractor: fakeExtractor{},
 			buffer:    -1,
 		},
@@ -126,19 +126,19 @@ func TestNewMatcherRejectsInvalidConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewMatcher(tt.downloader, tt.extractor, tt.threshold, tt.buffer)
 			if err == nil {
-				t.Fatal("expected invalid config to be rejected")
+				t.Fatal("ожидалось, что некорректная конфигурация будет отклонен")
 			}
 		})
 	}
 
 	_, err := NewMatcher(nil, fakeExtractor{}, 0, 0)
 	if err == nil {
-		t.Fatal("expected nil downloader to be rejected")
+		t.Fatal("ожидалось, что загрузчик равен nil будет отклонен")
 	}
 
 	_, err = NewMatcher(fakeDownloader{}, nil, 0, 0)
 	if err == nil {
-		t.Fatal("expected nil extractor to be rejected")
+		t.Fatal("ожидалось, что извлекатель равен nil будет отклонен")
 	}
 }
 
@@ -147,12 +147,12 @@ func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader fakeDown
 
 	matcher, err := NewSQLiteMatcher(ctx, downloader, extractor, threshold, buffer, filepath.Join(t.TempDir(), "imagehash.sqlite"))
 	if err != nil {
-		t.Fatalf("create sqlite matcher: %v", err)
+		t.Fatalf("создание SQLite-матчера: %v", err)
 	}
 
 	t.Cleanup(func() {
 		if err := matcher.Close(); err != nil {
-			t.Fatalf("close sqlite matcher: %v", err)
+			t.Fatalf("закрытие SQLite-матчера: %v", err)
 		}
 	})
 
