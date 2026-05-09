@@ -89,7 +89,7 @@ class VectorIndexService:
         dimension: int,
     ) -> int:
         if not frames:
-            raise ValueError("at least one vector frame is required")
+            raise ValueError("требуется хотя бы один вектор кадра")
 
         with self._lock:
             index = self._index_for_dimension(dimension)
@@ -139,7 +139,7 @@ class VectorIndexService:
 
     def search(self, *, frames: list[FrameEmbedding], dimension: int, top_k: int) -> list[FrameSearchResponse]:
         if top_k <= 0:
-            raise ValueError("top_k must be positive")
+            raise ValueError("top_k должен быть положительным")
 
         with self._lock:
             index = self._index_for_dimension(dimension)
@@ -161,7 +161,7 @@ class VectorIndexService:
     def _index_for_dimension(self, dimension: int) -> FaissHNSWVectorIndex:
         if self._index is not None:
             if self._dimension != dimension:
-                raise ValueError("vector dimension mismatch")
+                raise ValueError("размерность вектора не совпадает")
 
             return self._index
 
@@ -187,7 +187,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
 
     @app.post("/embed", response_model=EmbedResponse)
     async def embed(
-        files: Annotated[list[UploadFile], File(description="One image or ordered frames")],
+        files: Annotated[list[UploadFile], File(description="Одно изображение или упорядоченные кадры")],
     ) -> EmbedResponse:
         result = await _embed_files(dependencies, limits, files)
 
@@ -204,7 +204,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
     async def ban(
         file_unique_id: Annotated[str, Form(min_length=1)],
         media_type: Annotated[str, Form(min_length=1)],
-        files: Annotated[list[UploadFile], File(description="One image or ordered frames")],
+        files: Annotated[list[UploadFile], File(description="Одно изображение или упорядоченные кадры")],
     ) -> BanResponse:
         vector_service = _require_vector_service(dependencies)
         result = await _embed_files(dependencies, limits, files)
@@ -228,7 +228,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
 
     @app.post("/search", response_model=SearchResponse)
     async def search(
-        files: Annotated[list[UploadFile], File(description="One image or ordered frames")],
+        files: Annotated[list[UploadFile], File(description="Одно изображение или упорядоченные кадры")],
         top_k: Annotated[int, Query(gt=0)] = 5,
     ) -> SearchResponse:
         vector_service = _require_vector_service(dependencies)
@@ -259,26 +259,26 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
 
 def _require_vector_service(dependencies: Dependencies) -> VectorIndexService:
     if dependencies.vectors is None:
-        raise HTTPException(status_code=503, detail="vector index service is not configured")
+        raise HTTPException(status_code=503, detail="сервис векторного индекса не настроен")
 
     return dependencies.vectors
 
 
 async def _embed_files(dependencies: Dependencies, limits: UploadLimits, files: list[UploadFile]):
     if len(files) > limits.max_files:
-        raise HTTPException(status_code=413, detail="too many files")
+        raise HTTPException(status_code=413, detail="слишком много файлов")
 
     images = []
     upload_bytes = 0
     for file in files:
         remaining_bytes = limits.max_upload_bytes - upload_bytes
         if remaining_bytes <= 0:
-            raise HTTPException(status_code=413, detail="upload size exceeds limit")
+            raise HTTPException(status_code=413, detail="размер загрузки превышает лимит")
 
         data = await file.read(remaining_bytes + 1)
         upload_bytes += len(data)
         if upload_bytes > limits.max_upload_bytes:
-            raise HTTPException(status_code=413, detail="upload size exceeds limit")
+            raise HTTPException(status_code=413, detail="размер загрузки превышает лимит")
 
         try:
             images.append(dependencies.decoder.decode(data))
