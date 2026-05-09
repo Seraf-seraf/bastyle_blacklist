@@ -23,12 +23,12 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				if index.Search(query, 8) {
-					b.Fatal("expected no match")
+					b.Fatal("ожидалось: отсутствие совпадения")
 				}
 			}
 		})
 
-		b.Run(strconv.Itoa(size)+"_match_last", func(b *testing.B) {
+		b.Run(strconv.Itoa(size)+"_совпадение_last", func(b *testing.B) {
 			index := benchmarkIndex(size)
 			query := []uint64{
 				0x1111_2222_3333_4444,
@@ -47,7 +47,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				if !index.Search(query, 8) {
-					b.Fatal("expected match")
+					b.Fatal("ожидалось: совпадение")
 				}
 			}
 		})
