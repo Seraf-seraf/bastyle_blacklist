@@ -37,6 +37,6 @@ func TestStartHealthServer(t *testing.T) {
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status code: %d", response.StatusCode)
+		t.Fatalf("неожиданный HTTP-статус: %d", response.StatusCode)
 	}
 }
