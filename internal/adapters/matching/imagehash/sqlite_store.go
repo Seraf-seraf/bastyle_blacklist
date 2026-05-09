@@ -3,13 +3,18 @@ package imagehash
 import (
 	"context"
 	"database/sql"
+	"embed"
+	"io/fs"
 	"strconv"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/sqlitemigrate"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/*.sql
+var imageHashMigrations embed.FS
 
 type sqliteStore struct {
 	db *sql.DB
@@ -168,63 +173,23 @@ PRAGMA busy_timeout = 5000;
 		return apperrors.Wrap(methodCtx, err)
 	}
 
-	return apperrors.Wrap(methodCtx, sqlitemigrate.Run(ctx, s.db, "imagehash", []sqlitemigrate.Migration{
-		{
-			Version: 1,
-			Name:    "create_chat_scoped_schema",
-			Up:      migrateImageHashSchemaV1,
-		},
-	}))
-}
-
-func migrateImageHashSchemaV1(ctx context.Context, tx *sql.Tx) error {
-	exists, err := sqlitemigrate.TableExists(ctx, tx, "blocked_image")
+	migrations, err := fs.Sub(imageHashMigrations, "migrations")
 	if err != nil {
-		return err
-	}
-	if exists {
-		hasChatID, err := sqlitemigrate.TableHasColumn(ctx, tx, "blocked_image", "chat_id")
-		if err != nil {
-			return err
-		}
-		if !hasChatID {
-			if _, err := tx.ExecContext(ctx, `
-DROP TABLE IF EXISTS blocked_image_hash;
-DROP TABLE IF EXISTS blocked_image;
-`); err != nil {
-				return err
-			}
-		}
+		return apperrors.Wrap(methodCtx, err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS blocked_image (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	chat_id INTEGER NOT NULL DEFAULT 0,
-	file_unique_id TEXT NOT NULL,
-	media_type TEXT NOT NULL,
-	hash_version TEXT NOT NULL,
-	hash_signature TEXT NOT NULL,
-	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS blocked_image_hash (
-	image_id INTEGER NOT NULL,
-	variant INTEGER NOT NULL,
-	hash_uint64 TEXT NOT NULL,
-	PRIMARY KEY (image_id, variant),
-	FOREIGN KEY (image_id) REFERENCES blocked_image(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS blocked_image_hash_version_idx
-ON blocked_image(hash_version);
-CREATE UNIQUE INDEX IF NOT EXISTS blocked_image_chat_hash_signature_idx
-ON blocked_image(chat_id, hash_version, hash_signature)
-WHERE hash_signature <> '';
-`)
+	provider, err := goose.NewProvider(
+		goose.DialectSQLite3,
+		s.db,
+		migrations,
+		goose.WithTableName("imagehash_schema_migrations"),
+		goose.WithDisableGlobalRegistry(true),
+		goose.WithLogger(goose.NopLogger()),
+	)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
-	return nil
+	_, err = provider.Up(ctx)
+	return apperrors.Wrap(methodCtx, err)
 }

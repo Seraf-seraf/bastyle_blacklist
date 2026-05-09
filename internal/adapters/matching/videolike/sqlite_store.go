@@ -3,14 +3,19 @@ package videolike
 import (
 	"context"
 	"database/sql"
+	"embed"
+	"io/fs"
 	"strconv"
 	"strings"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/sqlitemigrate"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/*.sql
+var videoLikeMigrations embed.FS
 
 type sqliteStore struct {
 	db *sql.DB
@@ -189,67 +194,25 @@ PRAGMA busy_timeout = 5000;
 		return apperrors.Wrap(methodCtx, err)
 	}
 
-	return apperrors.Wrap(methodCtx, sqlitemigrate.Run(ctx, s.db, "videolike", []sqlitemigrate.Migration{
-		{
-			Version: 1,
-			Name:    "create_chat_scoped_schema",
-			Up:      migrateVideoLikeSchemaV1,
-		},
-	}))
-}
-
-func migrateVideoLikeSchemaV1(ctx context.Context, tx *sql.Tx) error {
-	exists, err := sqlitemigrate.TableExists(ctx, tx, "blocked_video_like")
+	migrations, err := fs.Sub(videoLikeMigrations, "migrations")
 	if err != nil {
-		return err
-	}
-	if exists {
-		hasChatID, err := sqlitemigrate.TableHasColumn(ctx, tx, "blocked_video_like", "chat_id")
-		if err != nil {
-			return err
-		}
-		if !hasChatID {
-			if _, err := tx.ExecContext(ctx, `
-DROP TABLE IF EXISTS blocked_video_like_frame_hash;
-DROP TABLE IF EXISTS blocked_video_like;
-`); err != nil {
-				return err
-			}
-		}
+		return apperrors.Wrap(methodCtx, err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS blocked_video_like (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	chat_id INTEGER NOT NULL DEFAULT 0,
-	file_unique_id TEXT NOT NULL,
-	source_type TEXT NOT NULL,
-	duration_sec INTEGER NOT NULL,
-	hash_version TEXT NOT NULL,
-	hash_signature TEXT NOT NULL,
-	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS blocked_video_like_frame_hash (
-	video_like_id INTEGER NOT NULL,
-	frame_index INTEGER NOT NULL,
-	position_millis INTEGER NOT NULL,
-	hash_uint64 TEXT NOT NULL,
-	PRIMARY KEY (video_like_id, frame_index),
-	FOREIGN KEY (video_like_id) REFERENCES blocked_video_like(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS blocked_video_like_hash_version_idx
-ON blocked_video_like(hash_version);
-CREATE UNIQUE INDEX IF NOT EXISTS blocked_video_like_chat_hash_signature_idx
-ON blocked_video_like(chat_id, hash_version, hash_signature)
-WHERE hash_signature <> '';
-`)
+	provider, err := goose.NewProvider(
+		goose.DialectSQLite3,
+		s.db,
+		migrations,
+		goose.WithTableName("videolike_schema_migrations"),
+		goose.WithDisableGlobalRegistry(true),
+		goose.WithLogger(goose.NopLogger()),
+	)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
-	return nil
+	_, err = provider.Up(ctx)
+	return apperrors.Wrap(methodCtx, err)
 }
 
 func videoLikeHashSignature(frames []StoredVideoLikeFrameHash) string {

@@ -183,9 +183,11 @@ func TestSQLiteStoreResetsLegacySchemaThroughMigration(t *testing.T) {
 
 	var version int
 	if err := store.db.QueryRowContext(ctx, `
-SELECT version
-FROM schema_migrations
-WHERE component = 'imagehash'
+SELECT version_id
+FROM imagehash_schema_migrations
+WHERE is_applied = 1
+ORDER BY id DESC
+LIMIT 1
 `).Scan(&version); err != nil {
 		t.Fatalf("проверка версии миграции: %v", err)
 	}
