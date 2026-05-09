@@ -27,7 +27,7 @@ help:
 	@echo "  make ai-data-50k    - скачать 50k COCO train2017 images для AI benchmark"
 	@echo "  make ai-data-100k   - скачать 100k COCO train2017 images для AI benchmark"
 	@echo "  make ai-hnsw-bench  - HNSW benchmark на synthetic или VECTORS=*.npz"
-	@echo "  make ai-static-quality - threshold report на MANIFEST=*.jsonl"
+	@echo "  make ai-static-quality - отчет по порогам на MANIFEST=*.jsonl"
 
 fmt:
 	gofmt -w cmd internal
@@ -79,7 +79,7 @@ ai-hnsw-bench:
 	python3 -m ai_vector_service.benchmarks.hnsw_benchmark $(if $(VECTORS),--vectors $(VECTORS),)
 
 ai-static-quality:
-	@test -n "$(MANIFEST)" || (echo "MANIFEST is required"; exit 1)
+	@test -n "$(MANIFEST)" || (echo "MANIFEST обязателен"; exit 1)
 	python3 -m ai_vector_service.benchmarks.static_quality --manifest $(MANIFEST)
 
 ci: vet test build
