@@ -40,6 +40,31 @@
 - Telegram видео и документы;
 - видеоматериалы со значительными изменениями: кадрированием (crop), оверлеями, водяными знаками, изменением скорости или агрессивным монтажом.
 
+## Architecture
+
+```text
+Telegram group
+  -> Telegram Bot API
+  -> Go bot
+      -> moderation service
+          -> exact matcher: Telegram file_unique_id
+          -> image_hash matcher: perceptual hash for static media
+          -> video_like matcher: FFmpeg frames + frame fingerprints
+          -> ai_vector matcher: HTTP client
+              -> Python FastAPI AI vector service
+                  -> Pillow decoder
+                  -> Transformers image embedding model
+                  -> SQLite source of truth
+                  -> Faiss HNSW derived index
+      -> Telegram delete message action
+```
+
+Основной процесс написан на Go и отвечает за Telegram-интеграцию, проверку прав
+администратора, пайплайн модерации и удаление сообщений. AI-vector matching
+вынесен в отдельный долгоживущий Python/FastAPI сервис, чтобы модель загружалась
+один раз, а Go-бот обращался к ней по HTTP. SQLite хранит активные ban-записи и
+векторы, Faiss HNSW используется как производный индекс для быстрого поиска.
+
 ## Требования
 
 - Go `1.25.4` или совместимая версия;
