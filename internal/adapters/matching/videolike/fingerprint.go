@@ -1,9 +1,8 @@
 package videolike
 
 import (
-	"errors"
-
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/corona10/goimagehash"
 )
 
@@ -29,19 +28,21 @@ type StoredVideoLikeFrameHash struct {
 }
 
 func fingerprintVideoLike(content domain.Content, extracted domain.ExtractedMedia) (StoredVideoLikeHash, error) {
+	const methodCtx = "videolike/fingerprintVideoLike"
+
 	if len(extracted.Frames) == 0 {
-		return StoredVideoLikeHash{}, errors.New("videolike fingerprint: extracted media has no frames")
+		return StoredVideoLikeHash{}, apperrors.New(methodCtx, "videolike fingerprint: извлеченное медиа не содержит кадров")
 	}
 
 	frames := make([]StoredVideoLikeFrameHash, 0, len(extracted.Frames))
 	for _, frame := range extracted.Frames {
 		if frame.Image == nil {
-			return StoredVideoLikeHash{}, errors.New("videolike fingerprint: extracted frame image is empty")
+			return StoredVideoLikeHash{}, apperrors.New(methodCtx, "videolike fingerprint: изображение извлеченного кадра пустое")
 		}
 
 		hash, err := goimagehash.PerceptionHash(frame.Image)
 		if err != nil {
-			return StoredVideoLikeHash{}, err
+			return StoredVideoLikeHash{}, apperrors.Wrap(methodCtx, err)
 		}
 
 		frames = append(frames, StoredVideoLikeFrameHash{
