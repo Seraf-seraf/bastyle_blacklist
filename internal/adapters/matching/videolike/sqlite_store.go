@@ -3,11 +3,11 @@ package videolike
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strconv"
 	"strings"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	_ "modernc.org/sqlite"
 )
 
@@ -16,13 +16,15 @@ type sqliteStore struct {
 }
 
 func OpenSQLiteStore(ctx context.Context, path string) (*sqliteStore, error) {
+	const methodCtx = "videolike/OpenSQLiteStore"
+
 	if path == "" {
-		return nil, errors.New("sqlite path is empty")
+		return nil, apperrors.New(methodCtx, "путь к SQLite пустой")
 	}
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	db.SetMaxOpenConns(1)
 
@@ -32,17 +34,21 @@ func OpenSQLiteStore(ctx context.Context, path string) (*sqliteStore, error) {
 
 	if err := store.ensureSchema(ctx); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	return store, nil
 }
 
 func (s *sqliteStore) close() error {
-	return s.db.Close()
+	const methodCtx = "videolike/sqliteStore.close"
+
+	return apperrors.Wrap(methodCtx, s.db.Close())
 }
 
 func (s *sqliteStore) load(ctx context.Context) ([]StoredVideoLikeHash, error) {
+	const methodCtx = "videolike/sqliteStore.load"
+
 	rows, err := s.db.QueryContext(ctx, `
 SELECT bvl.id, bvl.file_unique_id, bvl.source_type, bvl.duration_sec, bvl.hash_version,
        bvlfh.frame_index, bvlfh.position_millis, bvlfh.hash_uint64
@@ -52,7 +58,7 @@ WHERE bvl.hash_version = ?
 ORDER BY bvl.id, bvlfh.frame_index
 `, videoLikeHashVersion)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	defer rows.Close()
 
@@ -70,12 +76,12 @@ ORDER BY bvl.id, bvlfh.frame_index
 		var hashText string
 
 		if err := rows.Scan(&id, &fileUniqueID, &sourceType, &durationSec, &hashVersion, &frameIndex, &positionMillis, &hashText); err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		hash, err := strconv.ParseUint(hashText, 10, 64)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		storedHash, ok := byID[id]
@@ -100,7 +106,7 @@ ORDER BY bvl.id, bvlfh.frame_index
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	hashes := make([]StoredVideoLikeHash, 0, len(order))
@@ -112,13 +118,15 @@ ORDER BY bvl.id, bvlfh.frame_index
 }
 
 func (s *sqliteStore) insert(ctx context.Context, hash StoredVideoLikeHash) (int64, error) {
+	const methodCtx = "videolike/sqliteStore.insert"
+
 	if len(hash.Frames) == 0 {
-		return 0, errors.New("video-like sqlite store: hash frames are empty")
+		return 0, apperrors.New(methodCtx, "SQLite-хранилище video-like: кадры хеша пустые")
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -135,7 +143,7 @@ INSERT OR IGNORE INTO blocked_video_like (file_unique_id, source_type, duration_
 VALUES (?, ?, ?, ?, ?)
 `, hash.FileUniqueID, string(hash.SourceType), hash.DurationSec, hashVersion, signature)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 
 	var id int64
@@ -145,7 +153,7 @@ FROM blocked_video_like
 WHERE hash_version = ? AND hash_signature = ?
 `, hashVersion, signature).Scan(&id)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 
 	for _, frame := range hash.Frames {
@@ -154,18 +162,20 @@ INSERT OR IGNORE INTO blocked_video_like_frame_hash (video_like_id, frame_index,
 VALUES (?, ?, ?, ?)
 `, id, frame.FrameIndex, frame.PositionMillis, strconv.FormatUint(frame.Hash, 10))
 		if err != nil {
-			return 0, err
+			return 0, apperrors.Wrap(methodCtx, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 
 	return id, nil
 }
 
 func (s *sqliteStore) ensureSchema(ctx context.Context) error {
+	const methodCtx = "videolike/sqliteStore.ensureSchema"
+
 	_, err := s.db.ExecContext(ctx, `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -197,7 +207,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS blocked_video_like_hash_signature_idx
 ON blocked_video_like(hash_version, hash_signature)
 WHERE hash_signature <> '';
 `)
-	return err
+	return apperrors.Wrap(methodCtx, err)
 }
 
 func videoLikeHashSignature(frames []StoredVideoLikeFrameHash) string {
