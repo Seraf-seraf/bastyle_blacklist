@@ -16,12 +16,12 @@ DEFAULT_SIZES = (10_000, 50_000, 100_000)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Benchmark Faiss HNSW search on real or synthetic vectors.")
-    parser.add_argument("--vectors", type=Path, help="NPZ produced by embed_images.py")
+    parser = argparse.ArgumentParser(description="Бенчмарк поиска Faiss HNSW на реальных или синтетических векторах.")
+    parser.add_argument("--vectors", type=Path, help="NPZ, созданный embed_images.py")
     parser.add_argument("--sizes", default="10000,50000,100000")
     parser.add_argument("--queries", type=int, default=1000)
     parser.add_argument("--top-k", type=int, default=5)
-    parser.add_argument("--dimension", type=int, default=768, help="used only without --vectors")
+    parser.add_argument("--dimension", type=int, default=768, help="используется только без --vectors")
     parser.add_argument("--output", type=Path, default=Path("data/ai-vector-benchmark/hnsw-report.json"))
     parser.add_argument("--add-batch-size", type=int, default=2048)
     parser.add_argument("--m", type=int, default=32)
@@ -29,7 +29,7 @@ def main() -> None:
     parser.add_argument("--ef-search", type=int, default=64)
     args = parser.parse_args()
     if args.add_batch_size <= 0:
-        raise SystemExit("--add-batch-size must be positive")
+        raise SystemExit("--add-batch-size должен быть положительным")
 
     sizes = _parse_sizes(args.sizes)
     vectors = _load_vectors(args.vectors, max(sizes), args.dimension)
@@ -38,7 +38,7 @@ def main() -> None:
 
     for size in sizes:
         if size > len(vectors):
-            print(f"skip size={size}: only {len(vectors)} vectors available")
+            print(f"пропуск размера={size}: доступно только {len(vectors)} векторов")
             continue
 
         subset = _normalize(vectors[:size])
@@ -81,13 +81,13 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"report: {args.output}")
+    print(f"отчет: {args.output}")
 
 
 def _parse_sizes(raw: str) -> list[int]:
     sizes = [int(part.strip()) for part in raw.split(",") if part.strip()]
     if not sizes or any(size <= 0 for size in sizes):
-        raise SystemExit("--sizes must contain positive integers")
+        raise SystemExit("--sizes должен содержать положительные целые числа")
     return sizes
 
 
@@ -99,14 +99,14 @@ def _load_vectors(path: Path | None, count: int, dimension: int) -> np.ndarray:
     payload = np.load(path)
     vectors = np.asarray(payload["vectors"], dtype=np.float32)
     if vectors.ndim != 2:
-        raise RuntimeError("vectors array must be two-dimensional")
+        raise RuntimeError("массив векторов должен быть двумерным")
     return vectors
 
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     if np.any(norms == 0):
-        raise RuntimeError("zero vector is not supported")
+        raise RuntimeError("нулевой вектор не поддерживается")
     return vectors / norms
 
 
@@ -122,14 +122,14 @@ def _bans_from_vectors(vectors: np.ndarray, *, id_offset: int) -> list[VectorBan
                 model_name="benchmark",
                 model_revision="benchmark",
                 vector_dim=int(vectors.shape[1]),
-                frames_count=1,
+                кадры_count=1,
                 created_at="2026-05-08T00:00:00Z",
                 active=True,
-                frames=[
+                кадры=[
                     StoredVectorFrame(
                         id=ban_id,
                         ban_id=ban_id,
-                        frame_index=0,
+                        кадр_index=0,
                         position_millis=0,
                         vector=vector.tolist(),
                     )
