@@ -21,30 +21,30 @@ func TestFingerprintVideoLikeStoresFrameHashesWithMetadata(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("fingerprint video like: %v", err)
+		t.Fatalf("создание video-like fingerprint: %v", err)
 	}
 
 	if fingerprint.FileUniqueID != "animation-unique" {
-		t.Fatalf("file unique id = %q, want animation-unique", fingerprint.FileUniqueID)
+		t.Fatalf("file_unique_id = %q, ожидалось animation-unique", fingerprint.FileUniqueID)
 	}
 	if fingerprint.SourceType != domain.MediaAnimation {
-		t.Fatalf("source type = %q, want %q", fingerprint.SourceType, domain.MediaAnimation)
+		t.Fatalf("тип источника = %q, ожидалось %q", fingerprint.SourceType, domain.MediaAnimation)
 	}
 	if fingerprint.DurationSec != 3 {
-		t.Fatalf("duration = %d, want 3", fingerprint.DurationSec)
+		t.Fatalf("длительность = %d, ожидалось 3", fingerprint.DurationSec)
 	}
 	if fingerprint.HashVersion != videoLikeHashVersion {
-		t.Fatalf("hash version = %q, want %q", fingerprint.HashVersion, videoLikeHashVersion)
+		t.Fatalf("версия хеша = %q, ожидалось %q", fingerprint.HashVersion, videoLikeHashVersion)
 	}
 	if len(fingerprint.Frames) != 3 {
-		t.Fatalf("frames = %d, want 3", len(fingerprint.Frames))
+		t.Fatalf("кадры = %d, ожидалось 3", len(fingerprint.Frames))
 	}
 	for i, frame := range fingerprint.Frames {
 		if frame.FrameIndex != i {
-			t.Fatalf("frame index = %d, want %d", frame.FrameIndex, i)
+			t.Fatalf("индекс кадра = %d, ожидалось %d", frame.FrameIndex, i)
 		}
 		if frame.PositionMillis != i*1000 {
-			t.Fatalf("position millis = %d, want %d", frame.PositionMillis, i*1000)
+			t.Fatalf("позиция в миллисекундах = %d, ожидалось %d", frame.PositionMillis, i*1000)
 		}
 	}
 }
@@ -70,7 +70,7 @@ func TestMatchVideoLikeFingerprintRequiresMoreThanOneMatchedFrame(t *testing.T) 
 	}
 
 	if matchVideoLikeFingerprint(query, stored, 0) {
-		t.Fatal("expected one matched frame to be rejected")
+		t.Fatal("ожидалось: один совпавший кадр должен быть отклонен")
 	}
 }
 
@@ -95,7 +95,7 @@ func TestMatchVideoLikeFingerprintAcceptsTwoFramesWithRequiredRatio(t *testing.T
 	}
 
 	if !matchVideoLikeFingerprint(query, stored, 0) {
-		t.Fatal("expected two matched frames to be accepted")
+		t.Fatal("ожидалось: два совпавших кадра должны быть приняты")
 	}
 }
 
@@ -116,7 +116,7 @@ func TestMatchVideoLikeFingerprintRejectsHashVersionMismatch(t *testing.T) {
 	}
 
 	if matchVideoLikeFingerprint(query, stored, 0) {
-		t.Fatal("expected hash version mismatch to be rejected")
+		t.Fatal("ожидалась ошибка при несовпадении версии хеша")
 	}
 }
 
