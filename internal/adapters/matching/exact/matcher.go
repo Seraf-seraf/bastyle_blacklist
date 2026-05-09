@@ -2,11 +2,11 @@ package exact
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
 type matcher struct {
@@ -15,8 +15,10 @@ type matcher struct {
 }
 
 func NewMatcher(buffer int) (ports.ContentMatcher, error) {
+	const methodCtx = "exact/NewMatcher"
+
 	if buffer < 0 {
-		return nil, errors.New("exact matcher buffer must be non-negative")
+		return nil, apperrors.New(methodCtx, "буфер exact-матчера не должен быть отрицательным")
 	}
 
 	return &matcher{
