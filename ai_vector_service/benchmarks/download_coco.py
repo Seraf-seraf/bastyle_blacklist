@@ -17,8 +17,8 @@ DEFAULT_OUTPUT_DIR = Path("data/ai-vector-benchmark/coco2017")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download unique COCO 2017 train images for AI-vector benchmarks.")
-    parser.add_argument("--limit", type=int, default=100_000, help="number of unique images to download")
+    parser = argparse.ArgumentParser(description="Скачать уникальные изображения COCO 2017 train для AI-vector бенчмарков.")
+    parser.add_argument("--limit", type=int, default=100_000, help="количество уникальных изображений для скачивания")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -26,14 +26,14 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.limit <= 0:
-        raise SystemExit("--limit must be positive")
+        raise SystemExit("--limit должен быть положительным")
     if args.workers <= 0:
-        raise SystemExit("--workers must be positive")
+        raise SystemExit("--workers должен быть положительным")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     annotations_zip = args.output_dir / "annotations_trainval2017.zip"
     if not annotations_zip.exists():
-        print(f"downloading annotations: {ANNOTATIONS_URL}")
+        print(f"загрузка аннотаций: {ANNOTATIONS_URL}")
         _download_file(ANNOTATIONS_URL, annotations_zip, args.timeout)
 
     images = _load_train_images(annotations_zip, args.limit)
@@ -43,7 +43,7 @@ def main() -> None:
 
     existing = _load_existing_manifest(manifest_path)
     todo = [image for image in images if image["id"] not in existing]
-    print(f"target={len(images)} existing={len(existing)} todo={len(todo)}")
+    print(f"цель={len(images)} существующих={len(existing)} осталось={len(todo)}")
 
     with manifest_path.open("a", encoding="utf-8") as manifest:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
@@ -60,9 +60,9 @@ def main() -> None:
                 manifest.flush()
                 completed += 1
                 if completed % 1000 == 0:
-                    print(f"downloaded {completed}/{len(images)}")
+                    print(f"загружено {completed}/{len(images)}")
 
-    print(f"manifest: {manifest_path}")
+    print(f"манифест: {manifest_path}")
 
 
 def _load_train_images(annotations_zip: Path, limit: int) -> list[dict]:
@@ -92,7 +92,7 @@ def _load_train_images(annotations_zip: Path, limit: int) -> list[dict]:
             break
 
     if len(selected) < limit:
-        raise RuntimeError(f"COCO train2017 contains only {len(selected)} unique images")
+        raise RuntimeError(f"COCO train2017 содержит только {len(selected)} уникальных изображений")
     return selected
 
 
@@ -119,7 +119,7 @@ def _download_image(image: dict, images_dir: Path, timeout: float, retries: int)
                 if path.exists():
                     path.unlink()
                 if attempt == retries:
-                    print(f"failed {image['url']}: {err}")
+                    print(f"ошибка {image['url']}: {err}")
                     return None
                 time.sleep(min(2**attempt, 10))
 
