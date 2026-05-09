@@ -2,13 +2,13 @@ package telegram
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -20,8 +20,10 @@ type fileDownloader struct {
 }
 
 func NewFileDownloader(bot *tgbotapi.BotAPI) (ports.MediaDownloader, error) {
+	const methodCtx = "telegram/NewFileDownloader"
+
 	if bot == nil {
-		return nil, errors.New("telegram file downloader bot is not configured")
+		return nil, apperrors.New(methodCtx, "Telegram-бот для загрузки файлов не настроен")
 	}
 
 	return &fileDownloader{
@@ -33,44 +35,46 @@ func NewFileDownloader(bot *tgbotapi.BotAPI) (ports.MediaDownloader, error) {
 }
 
 func (d *fileDownloader) Download(ctx context.Context, content domain.Content) (domain.MediaFile, error) {
+	const methodCtx = "telegram/fileDownloader.Download"
+
 	if content.SizeBytes > maxDownloadBytes {
-		return domain.MediaFile{}, errors.New("download file: media is too large")
+		return domain.MediaFile{}, apperrors.New(methodCtx, "загрузка файла: медиафайл слишком большой")
 	}
 
 	file, err := d.bot.GetFile(tgbotapi.FileConfig{FileID: content.FileID})
 	if err != nil {
-		return domain.MediaFile{}, err
+		return domain.MediaFile{}, apperrors.Wrap(methodCtx, err)
 	}
 	if file.FileSize > maxDownloadBytes {
-		return domain.MediaFile{}, errors.New("download file: media is too large")
+		return domain.MediaFile{}, apperrors.New(methodCtx, "загрузка файла: медиафайл слишком большой")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, file.Link(d.bot.Token), nil)
 	if err != nil {
-		return domain.MediaFile{}, err
+		return domain.MediaFile{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return domain.MediaFile{}, err
+		return domain.MediaFile{}, apperrors.Wrap(methodCtx, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return domain.MediaFile{}, errors.New("download file: unexpected status")
+		return domain.MediaFile{}, apperrors.New(methodCtx, "загрузка файла: неожиданный статус ответа")
 	}
 
 	if resp.ContentLength > maxDownloadBytes {
-		return domain.MediaFile{}, errors.New("download file: response is too large")
+		return domain.MediaFile{}, apperrors.New(methodCtx, "загрузка файла: ответ слишком большой")
 	}
 
 	limitedReader := io.LimitReader(resp.Body, maxDownloadBytes+1)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return domain.MediaFile{}, err
+		return domain.MediaFile{}, apperrors.Wrap(methodCtx, err)
 	}
 	if len(data) > maxDownloadBytes {
-		return domain.MediaFile{}, errors.New("download file: response exceeded size limit")
+		return domain.MediaFile{}, apperrors.New(methodCtx, "загрузка файла: ответ превысил ограничение размера")
 	}
 
 	return domain.MediaFile{
