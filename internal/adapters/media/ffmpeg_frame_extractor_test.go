@@ -25,20 +25,20 @@ func TestFFmpegFrameExtractorReturnsNoMoreThanMaxFrames(t *testing.T) {
 		TargetHeight: 320,
 	})
 	if err != nil {
-		t.Fatalf("extract frames: %v", err)
+		t.Fatalf("извлечение кадров: %v", err)
 	}
 	if len(extracted.Frames) != 3 {
-		t.Fatalf("frames = %d, want 3", len(extracted.Frames))
+		t.Fatalf("кадры = %d, ожидалось 3", len(extracted.Frames))
 	}
 	for i, frame := range extracted.Frames {
 		if frame.Index != i {
-			t.Fatalf("frame index = %d, want %d", frame.Index, i)
+			t.Fatalf("индекс кадра = %d, ожидалось %d", frame.Index, i)
 		}
 		if frame.PositionMillis != i*1000 {
-			t.Fatalf("frame position = %d, want %d", frame.PositionMillis, i*1000)
+			t.Fatalf("позиция кадра = %d, ожидалось %d", frame.PositionMillis, i*1000)
 		}
 		if frame.Image == nil {
-			t.Fatal("expected decoded frame image")
+			t.Fatal("ожидалось: декодированное изображение кадра")
 		}
 	}
 }
@@ -53,10 +53,10 @@ func TestFFmpegFrameExtractorStopsOnTimeout(t *testing.T) {
 		TargetHeight: 320,
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("extract error = %v, want deadline exceeded", err)
+		t.Fatalf("ошибка извлечения = %v, ожидалось превышение дедлайна", err)
 	}
 	if time.Since(start) > time.Second {
-		t.Fatal("extractor did not stop promptly after timeout")
+		t.Fatal("экстрактор не остановился быстро после таймаута")
 	}
 }
 
@@ -69,7 +69,7 @@ func TestFFmpegFrameExtractorReturnsErrorForCorruptedFrame(t *testing.T) {
 		TargetHeight: 320,
 	})
 	if err == nil {
-		t.Fatal("expected corrupted frame error")
+		t.Fatal("ожидалось: ошибка поврежденного кадра")
 	}
 }
 
@@ -82,19 +82,19 @@ func TestFFmpegFrameExtractorReturnsCommandError(t *testing.T) {
 		TargetHeight: 320,
 	})
 	if err == nil {
-		t.Fatal("expected ffmpeg command error")
+		t.Fatal("ожидалось: ошибка команды ffmpeg")
 	}
 }
 
 func TestNewFFmpegFrameExtractorRejectsInvalidDependencies(t *testing.T) {
 	_, err := NewFFmpegFrameExtractor("", time.Second)
 	if err == nil {
-		t.Fatal("expected empty binary to be rejected")
+		t.Fatal("ожидалась ошибка для пустого бинарного файла")
 	}
 
 	_, err = NewFFmpegFrameExtractor("ffmpeg", 0)
 	if err == nil {
-		t.Fatal("expected invalid timeout to be rejected")
+		t.Fatal("ожидалось, что некорректный таймаут будет отклонен")
 	}
 }
 
@@ -113,7 +113,7 @@ func TestFFmpegFrameExtractorRejectsInvalidPlan(t *testing.T) {
 	for _, plan := range tests {
 		_, err := extractor.Extract(context.Background(), testVideoFile(), plan)
 		if err == nil {
-			t.Fatalf("expected invalid plan error for plan: %+v", plan)
+			t.Fatalf("ожидалось: ошибка некорректного плана для плана: %+v", plan)
 		}
 	}
 }
@@ -123,12 +123,12 @@ func newTestFFmpegFrameExtractor(t *testing.T, mode string, timeout time.Duratio
 
 	extractor, err := NewFFmpegFrameExtractor(writeFakeFFmpeg(t, mode), timeout)
 	if err != nil {
-		t.Fatalf("new extractor: %v", err)
+		t.Fatalf("создание экстрактора: %v", err)
 	}
 
 	typed, ok := extractor.(*ffmpegFrameExtractor)
 	if !ok {
-		t.Fatalf("extractor type = %T, want *ffmpegFrameExtractor", extractor)
+		t.Fatalf("тип экстрактора = %T, ожидался *ffmpegFrameExtractor", extractor)
 	}
 
 	return typed
