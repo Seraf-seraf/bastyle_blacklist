@@ -24,7 +24,7 @@
 
 ## Возможности `v1.2.0`
 
-- exact-match по Telegram `file_unique_id`;
+- exact-совпадение по Telegram `file_unique_id`;
 - perceptual hash matching для фото и статичных стикеров;
 - video-like matching для Telegram animations и video stickers;
 - AI-vector matching для визуально похожих изображений, статичных стикеров,
@@ -197,17 +197,17 @@ matching:
 `matching.image_hash.db_path` - SQLite-файл для хэшей картинок.
 `matching.image_hash.threshold` - максимальная Hamming distance для похожих изображений.
 `media_config.*` - общие лимиты и FFmpeg-настройки для кадров, которые
-используют matchers `video_like` и `ai_vector`.
+используют матчеры `video_like` и `ai_vector`.
 `matching.video_like.db_path` - SQLite-файл для video-like отпечатков.
 `matching.video_like.min_matched_frames` и `min_matched_ratio` - правило
-совпадения кадров для video-like hash matcher-а.
-`matching.ai_vector.enabled` - включает или отключает AI vector matcher.
+долю совпадения кадров для video-like hash матчера.
+`matching.ai_vector.enabled` - включает или отключает AI vector матчер.
 `matching.ai_vector.db_path` - SQLite-файл для AI-vector ban'ов.
 `matching.ai_vector.index_path` - файл Faiss HNSW индекса.
 `matching.ai_vector.threshold` - минимальный cosine similarity score.
 `matching.ai_vector.top_k` - сколько ближайших векторов запрашивать у AI service.
 `matching.ai_vector.min_matched_frames` и `min_matched_ratio` - правило
-совпадения кадров для AI-vector matcher-а.
+долю совпадения кадров для AI-vector матчера.
 `matching.ai_vector.service.host` и `matching.ai_vector.service.port` - host/port
 AI vector service.
 `matching.ai_vector.hnsw.m`, `ef_construction`, `ef_search` - параметры HNSW
@@ -224,7 +224,7 @@ go run ./cmd/main.go -config configs/config.yaml
 После успешного запуска бот пишет в лог:
 
 ```text
-Authorized as <bot_username>
+Авторизован как <bot_username>
 ```
 
 ## Docker
@@ -351,5 +351,5 @@ Unit запускает бот от пользователя `bastyle_bot`, хр
 - `/ban` сохраняет признаки кадров для анимированного контента, поэтому
   повторные похожие GIF, animations и video stickers могут удаляться
   автоматически;
-- AI-vector matcher отключен по умолчанию и включается через config, чтобы
+- AI-vector матчер отключен по умолчанию и включается через config, чтобы
   группы без этой функции продолжали работать в прежнем режиме.
