@@ -42,7 +42,7 @@ class FaissHNSWVectorIndex:
         refs: list[IndexedVectorRef] | None = None,
     ) -> None:
         if dimension <= 0:
-            raise ValueError("vector dimension must be positive")
+            raise ValueError("размерность вектора должна быть положительной")
 
         self._faiss = _load_faiss()
         self._dimension = dimension
@@ -53,9 +53,9 @@ class FaissHNSWVectorIndex:
         self._lock = threading.RLock()
 
         if self._index.d != dimension:
-            raise ValueError("faiss index dimension mismatch")
+            raise ValueError("размерность индекса faiss не совпадает")
         if self._index.ntotal != len(self._refs):
-            raise ValueError("faiss index and refs count mismatch")
+            raise ValueError("количество записей индекса faiss и ссылок не совпадает")
 
     @property
     def dimension(self) -> int:
@@ -142,7 +142,7 @@ class FaissHNSWVectorIndex:
         config: HNSWConfig | None = None,
     ) -> "FaissHNSWVectorIndex":
         if not index_file_sha256:
-            raise ValueError("index file checksum is required")
+            raise ValueError("контрольная сумма файла индекса обязательна")
 
         faiss = _load_faiss()
         index = _read_verified_index(faiss, Path(path), index_file_sha256)
@@ -162,7 +162,7 @@ class FaissHNSWVectorIndex:
         refs: list[IndexedVectorRef] = []
         for ban in bans:
             if ban.vector_dim != self._dimension:
-                raise ValueError("ban vector dimension mismatch")
+                raise ValueError("размерность вектора бана не совпадает")
             for frame in ban.frames:
                 vectors.append(frame.vector)
                 refs.append(IndexedVectorRef(ban_id=ban.id, frame_index=frame.frame_index))
@@ -177,7 +177,7 @@ class FaissHNSWVectorIndex:
 
     def search(self, vector: list[float], top_k: int) -> list[VectorSearchHit]:
         if top_k <= 0:
-            raise ValueError("top_k must be positive")
+            raise ValueError("top_k должен быть положительным")
 
         query = _normalize_vectors([vector], self._dimension)
         with self._lock:
@@ -220,7 +220,7 @@ class FaissHNSWVectorIndex:
 
         with self._lock:
             if int(self._index.ntotal) != len(refs) or self._refs != refs:
-                raise ValueError("faiss index does not match active bans")
+                raise ValueError("индекс faiss не соответствует активным банам")
 
             self._faiss.write_index(self._index, str(path))
             vectors_count = int(self._index.ntotal)
@@ -253,11 +253,11 @@ class FaissHNSWVectorIndex:
     @staticmethod
     def _validate_config(config: HNSWConfig) -> None:
         if config.m <= 0:
-            raise ValueError("hnsw m must be positive")
+            raise ValueError("параметр hnsw m должен быть положительным")
         if config.ef_construction <= 0:
-            raise ValueError("hnsw ef_construction must be positive")
+            raise ValueError("параметр hnsw ef_construction должен быть положительным")
         if config.ef_search <= 0:
-            raise ValueError("hnsw ef_search must be positive")
+            raise ValueError("параметр hnsw ef_search должен быть положительным")
 
 
 def _bans_to_refs(bans: list[VectorBan]) -> list[IndexedVectorRef]:
@@ -329,7 +329,7 @@ def _read_verified_index(faiss, path: Path, expected_sha256: str):
     index_bytes = path.read_bytes()
     actual_sha256 = hashlib.sha256(index_bytes).hexdigest()
     if actual_sha256 != expected_sha256:
-        raise ValueError("faiss index checksum mismatch")
+        raise ValueError("контрольная сумма индекса faiss не совпадает")
 
     encoded = np.frombuffer(index_bytes, dtype=np.uint8)
     return faiss.deserialize_index(encoded)
@@ -338,11 +338,11 @@ def _read_verified_index(faiss, path: Path, expected_sha256: str):
 def _normalize_vectors(vectors: list[list[float]], dimension: int) -> np.ndarray:
     matrix = np.asarray(vectors, dtype=np.float32)
     if matrix.ndim != 2 or matrix.shape[1] != dimension:
-        raise ValueError("vector dimension mismatch")
+        raise ValueError("размерность вектора не совпадает")
 
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     if np.any(norms == 0):
-        raise ValueError("zero vector is not supported")
+        raise ValueError("нулевой вектор не поддерживается")
 
     return matrix / norms
 
@@ -351,6 +351,6 @@ def _load_faiss():
     try:
         import faiss
     except ImportError as err:
-        raise RuntimeError("faiss-cpu is not installed") from err
+        raise RuntimeError("faiss-cpu не установлен") from err
 
     return faiss
