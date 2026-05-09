@@ -2,13 +2,13 @@ package imagehash
 
 import (
 	"context"
-	"errors"
 	"image"
 	"path/filepath"
 	"strings"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/corona10/goimagehash"
 	"github.com/disintegration/imaging"
 )
@@ -23,8 +23,10 @@ type matcher struct {
 }
 
 func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) (*matcher, error) {
+	const methodCtx = "imagehash/NewMatcher"
+
 	if err := validateMatcherConfig(downloader, extractor, threshold, buffer); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	return &matcher{
@@ -36,28 +38,30 @@ func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor
 }
 
 func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int, dbPath string) (*matcher, error) {
+	const methodCtx = "imagehash/NewSQLiteMatcher"
+
 	if dbPath == "" {
-		return nil, errors.New("imagehash matcher db path is not configured")
+		return nil, apperrors.New(methodCtx, "путь к БД imagehash-матчера не настроен")
 	}
 	if err := validateMatcherConfig(downloader, extractor, threshold, buffer); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	store, err := OpenSQLiteStore(ctx, dbPath)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	storedHashes, err := store.load(ctx)
 	if err != nil {
 		_ = store.close()
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	matcher, err := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes))
 	if err != nil {
 		_ = store.close()
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	matcher.store = store
 	matcher.index.AddMany(storedHashes)
@@ -66,38 +70,44 @@ func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, ext
 }
 
 func validateMatcherConfig(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) error {
+	const methodCtx = "imagehash/validateMatcherConfig"
+
 	if downloader == nil {
-		return errors.New("imagehash matcher downloader is not configured")
+		return apperrors.New(methodCtx, "загрузчик imagehash-матчера не настроен")
 	}
 	if extractor == nil {
-		return errors.New("imagehash matcher extractor is not configured")
+		return apperrors.New(methodCtx, "извлекатель imagehash-матчера не настроен")
 	}
 	if threshold < 0 {
-		return errors.New("imagehash matcher threshold must be non-negative")
+		return apperrors.New(methodCtx, "порог imagehash-матчера не должен быть отрицательным")
 	}
 	if buffer < 0 {
-		return errors.New("imagehash matcher buffer must be non-negative")
+		return apperrors.New(methodCtx, "буфер imagehash-матчера не должен быть отрицательным")
 	}
 
 	return nil
 }
 
 func (m *matcher) Close() error {
+	const methodCtx = "imagehash/matcher.Close"
+
 	if m.store == nil {
 		return nil
 	}
 
-	return m.store.close()
+	return apperrors.Wrap(methodCtx, m.store.close())
 }
 
 func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+	const methodCtx = "imagehash/matcher.IsBlocked"
+
 	if !m.supports(content) {
 		return false, nil
 	}
 
 	hashes, err := m.hashContent(ctx, content)
 	if err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 	if len(hashes) == 0 {
 		return false, nil
@@ -107,16 +117,18 @@ func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 }
 
 func (m *matcher) Block(ctx context.Context, content domain.Content) error {
+	const methodCtx = "imagehash/matcher.Block"
+
 	if !m.supports(content) {
 		return nil
 	}
 	if m.store == nil {
-		return errors.New("imagehash store is not configured")
+		return apperrors.New(methodCtx, "хранилище imagehash не настроено")
 	}
 
 	hashes, err := m.hashContent(ctx, content)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if len(hashes) == 0 {
 		return nil
@@ -130,7 +142,7 @@ func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 
 	id, err := m.store.insert(ctx, storedHash)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	storedHash.ID = id
 
@@ -145,9 +157,11 @@ func (m *matcher) supports(content domain.Content) bool {
 }
 
 func (m *matcher) hashContent(ctx context.Context, content domain.Content) ([]uint64, error) {
+	const methodCtx = "imagehash/matcher.hashContent"
+
 	media, err := m.downloader.Download(ctx, content)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	if isVideoFile(media.FilePath) {
 		return nil, nil
@@ -157,16 +171,16 @@ func (m *matcher) hashContent(ctx context.Context, content domain.Content) ([]ui
 		MaxFrames: 1,
 	})
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	if len(extracted.Frames) == 0 {
-		return nil, errors.New("media extractor returned no frames")
+		return nil, apperrors.New(methodCtx, "извлекатель медиа не вернул кадров")
 	}
 
 	hashes, err := perceptionHashVariants(extracted.Frames[0].Image)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	return hashes, nil
@@ -182,6 +196,8 @@ func isVideoFile(filePath string) bool {
 }
 
 func perceptionHashVariants(img image.Image) ([]uint64, error) {
+	const methodCtx = "imagehash/perceptionHashVariants"
+
 	images := []image.Image{
 		img,
 		imaging.Rotate90(img),
@@ -193,7 +209,7 @@ func perceptionHashVariants(img image.Image) ([]uint64, error) {
 	for _, img := range images {
 		hash, err := goimagehash.PerceptionHash(img)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		hashes = append(hashes, hash.GetHash())
