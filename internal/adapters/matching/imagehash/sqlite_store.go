@@ -3,10 +3,10 @@ package imagehash
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strconv"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	_ "modernc.org/sqlite"
 )
 
@@ -15,13 +15,15 @@ type sqliteStore struct {
 }
 
 func OpenSQLiteStore(ctx context.Context, path string) (*sqliteStore, error) {
+	const methodCtx = "imagehash/OpenSQLiteStore"
+
 	if path == "" {
-		return nil, errors.New("sqlite path is empty")
+		return nil, apperrors.New(methodCtx, "путь к SQLite пустой")
 	}
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	db.SetMaxOpenConns(1)
 
@@ -31,17 +33,21 @@ func OpenSQLiteStore(ctx context.Context, path string) (*sqliteStore, error) {
 
 	if err := store.ensureSchema(ctx); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	return store, nil
 }
 
 func (s *sqliteStore) close() error {
-	return s.db.Close()
+	const methodCtx = "imagehash/sqliteStore.close"
+
+	return apperrors.Wrap(methodCtx, s.db.Close())
 }
 
 func (s *sqliteStore) load(ctx context.Context) ([]StoredImageHash, error) {
+	const methodCtx = "imagehash/sqliteStore.load"
+
 	rows, err := s.db.QueryContext(ctx, `
 SELECT bi.id, bi.file_unique_id, bi.media_type, bih.hash_uint64
 FROM blocked_image bi
@@ -50,7 +56,7 @@ WHERE bi.hash_version = ?
 ORDER BY bi.id, bih.variant
 `, hashVersion)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	defer rows.Close()
 
@@ -64,12 +70,12 @@ ORDER BY bi.id, bih.variant
 		var hashText string
 
 		if err := rows.Scan(&id, &fileUniqueID, &mediaType, &hashText); err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		hash, err := strconv.ParseUint(hashText, 10, 64)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		storedHash, ok := byID[id]
@@ -88,7 +94,7 @@ ORDER BY bi.id, bih.variant
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	hashes := make([]StoredImageHash, 0, len(order))
@@ -100,9 +106,11 @@ ORDER BY bi.id, bih.variant
 }
 
 func (s *sqliteStore) insert(ctx context.Context, hash StoredImageHash) (int64, error) {
+	const methodCtx = "imagehash/sqliteStore.insert"
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -114,7 +122,7 @@ INSERT OR IGNORE INTO blocked_image (file_unique_id, media_type, hash_version, h
 VALUES (?, ?, ?, ?)
 `, hash.FileUniqueID, string(hash.MediaType), hashVersion, signature)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 
 	var id int64
@@ -124,7 +132,7 @@ FROM blocked_image
 WHERE hash_version = ? AND hash_signature = ?
 `, hashVersion, signature).Scan(&id)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 
 	for variant, value := range hash.Hashes {
@@ -133,18 +141,20 @@ INSERT OR IGNORE INTO blocked_image_hash (image_id, variant, hash_uint64)
 VALUES (?, ?, ?)
 `, id, variant, strconv.FormatUint(value, 10))
 		if err != nil {
-			return 0, err
+			return 0, apperrors.Wrap(methodCtx, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, apperrors.Wrap(methodCtx, err)
 	}
 
 	return id, nil
 }
 
 func (s *sqliteStore) ensureSchema(ctx context.Context) error {
+	const methodCtx = "imagehash/sqliteStore.ensureSchema"
+
 	_, err := s.db.ExecContext(ctx, `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -171,19 +181,19 @@ CREATE INDEX IF NOT EXISTS blocked_image_hash_version_idx
 ON blocked_image(hash_version);
 `)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	hasSignatureColumn, err := s.hasColumn(ctx, "blocked_image", "hash_signature")
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if !hasSignatureColumn {
 		_, err := s.db.ExecContext(ctx, `
 ALTER TABLE blocked_image ADD COLUMN hash_signature TEXT NOT NULL DEFAULT '';
 `)
 		if err != nil {
-			return err
+			return apperrors.Wrap(methodCtx, err)
 		}
 	}
 
@@ -192,13 +202,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS blocked_image_hash_signature_idx
 ON blocked_image(hash_version, hash_signature)
 WHERE hash_signature <> '';
 `)
-	return err
+	return apperrors.Wrap(methodCtx, err)
 }
 
 func (s *sqliteStore) hasColumn(ctx context.Context, table string, column string) (bool, error) {
+	const methodCtx = "imagehash/sqliteStore.hasColumn"
+
 	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
 	if err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 	defer rows.Close()
 
@@ -211,7 +223,7 @@ func (s *sqliteStore) hasColumn(ctx context.Context, table string, column string
 		var primaryKey int
 
 		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return false, err
+			return false, apperrors.Wrap(methodCtx, err)
 		}
 
 		if name == column {
@@ -220,7 +232,7 @@ func (s *sqliteStore) hasColumn(ctx context.Context, table string, column string
 	}
 
 	if err := rows.Err(); err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 
 	return false, nil
