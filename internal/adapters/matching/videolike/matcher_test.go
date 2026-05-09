@@ -68,13 +68,13 @@ func TestSupportsAcceptsAnimation(t *testing.T) {
 		Type:         domain.MediaAnimation,
 	})
 	if err != nil {
-		t.Fatalf("supports animation: %v", err)
+		t.Fatalf("проверка поддержки анимации: %v", err)
 	}
 	if !supported {
-		t.Fatal("expected animation to be supported")
+		t.Fatal("ожидалось: анимация должна поддерживаться")
 	}
 	if downloader.calls != 1 {
-		t.Fatalf("download calls = %d, want 1", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 1", downloader.calls)
 	}
 }
 
@@ -92,10 +92,10 @@ func TestSupportsAcceptsWebMStickerAfterDownload(t *testing.T) {
 		Type:         domain.MediaStickerStatic,
 	})
 	if err != nil {
-		t.Fatalf("supports webm sticker: %v", err)
+		t.Fatalf("проверка поддержки webm-стикера: %v", err)
 	}
 	if !supported {
-		t.Fatal("expected webm sticker to be supported")
+		t.Fatal("ожидалось: webm-стикер должен поддерживаться")
 	}
 }
 
@@ -113,10 +113,10 @@ func TestSupportsRejectsStaticWebPSticker(t *testing.T) {
 		Type:         domain.MediaStickerStatic,
 	})
 	if err != nil {
-		t.Fatalf("supports static sticker: %v", err)
+		t.Fatalf("проверка поддержки статического стикера: %v", err)
 	}
 	if supported {
-		t.Fatal("expected static webp sticker to be rejected")
+		t.Fatal("ожидалось: статический webp-стикер должен быть отклонен")
 	}
 }
 
@@ -135,10 +135,10 @@ func TestSupportsRejectsStaticWebPStickerWithoutApplyingVideoStickerSizeLimit(t 
 		SizeBytes:    defaultTestLimits().MaxVideoStickerSize + 1,
 	})
 	if err != nil {
-		t.Fatalf("supports static sticker: %v", err)
+		t.Fatalf("проверка поддержки статического стикера: %v", err)
 	}
 	if supported {
-		t.Fatal("expected static webp sticker to be rejected")
+		t.Fatal("ожидалось: статический webp-стикер должен быть отклонен")
 	}
 }
 
@@ -152,13 +152,13 @@ func TestSupportsRejectsAnimatedTGSStickerWithoutDownload(t *testing.T) {
 		Type:         domain.MediaStickerAnimated,
 	})
 	if err != nil {
-		t.Fatalf("supports animated sticker: %v", err)
+		t.Fatalf("проверка поддержки анимированного стикера: %v", err)
 	}
 	if supported {
-		t.Fatal("expected animated sticker to be rejected")
+		t.Fatal("ожидалось: анимированный стикер должен быть отклонен")
 	}
 	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 0", downloader.calls)
 	}
 }
 
@@ -173,20 +173,20 @@ func TestSupportsRejectsOrdinaryVideoAndDocumentTypes(t *testing.T) {
 			Type:         mediaType,
 		})
 		if err != nil {
-			t.Fatalf("supports %s: %v", mediaType, err)
+			t.Fatalf("проверка поддержки %s: %v", mediaType, err)
 		}
 		if supported {
-			t.Fatalf("expected %s to be rejected", mediaType)
+			t.Fatalf("ожидалось, что %s будет отклонен", mediaType)
 		}
 	}
 
 	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 0", downloader.calls)
 	}
 }
 
 func TestSupportsReturnsDownloaderErrorForStickerScopeDetection(t *testing.T) {
-	downloadErr := errors.New("download failed")
+	downloadErr := errors.New("ошибка загрузки")
 	matcher := newTestMatcher(t, &fakeDownloader{err: downloadErr})
 
 	_, err := matcher.supports(context.Background(), domain.Content{
@@ -195,7 +195,7 @@ func TestSupportsReturnsDownloaderErrorForStickerScopeDetection(t *testing.T) {
 		Type:         domain.MediaStickerStatic,
 	})
 	if !errors.Is(err, downloadErr) {
-		t.Fatalf("supports error = %v, want %v", err, downloadErr)
+		t.Fatalf("ошибка проверки поддержки = %v, ожидалось %v", err, downloadErr)
 	}
 }
 
@@ -210,10 +210,10 @@ func TestSupportsRejectsAnimationOverDurationLimitWithoutDownload(t *testing.T) 
 		DurationSec:  int(defaultTestLimits().MaxAnimationDuration/time.Second) + 1,
 	})
 	if err == nil {
-		t.Fatal("expected animation duration limit error")
+		t.Fatal("ожидалось: ошибка анимации лимита длительности")
 	}
 	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 0", downloader.calls)
 	}
 }
 
@@ -228,10 +228,10 @@ func TestSupportsRejectsAnimationOverSizeLimitWithoutDownload(t *testing.T) {
 		SizeBytes:    defaultTestLimits().MaxAnimationSize + 1,
 	})
 	if err == nil {
-		t.Fatal("expected animation size limit error")
+		t.Fatal("ожидалось: ошибка лимита размера анимации")
 	}
 	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 0", downloader.calls)
 	}
 }
 
@@ -246,10 +246,10 @@ func TestSupportsRejectsVideoStickerOverDurationLimitWithoutDownload(t *testing.
 		DurationSec:  int(defaultTestLimits().MaxVideoStickerDuration/time.Second) + 1,
 	})
 	if err == nil {
-		t.Fatal("expected video sticker duration limit error")
+		t.Fatal("ожидалось: ошибка видеостикера лимита длительности")
 	}
 	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 0", downloader.calls)
 	}
 }
 
@@ -268,10 +268,10 @@ func TestSupportsRejectsVideoStickerOverMetadataSizeLimitAfterFileTypeDetection(
 		SizeBytes:    defaultTestLimits().MaxVideoStickerSize + 1,
 	})
 	if err == nil {
-		t.Fatal("expected video sticker size limit error")
+		t.Fatal("ожидалось: ошибка лимита размера видеостикера")
 	}
 	if downloader.calls != 1 {
-		t.Fatalf("download calls = %d, want 1", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 1", downloader.calls)
 	}
 }
 
@@ -293,24 +293,24 @@ func TestSupportsRejectsVideoStickerOverDownloadedSizeLimit(t *testing.T) {
 		Type:         domain.MediaStickerStatic,
 	})
 	if err == nil {
-		t.Fatal("expected downloaded size limit error")
+		t.Fatal("ожидалось: ошибка лимита размера загрузки")
 	}
 	if downloader.calls != 1 {
-		t.Fatalf("download calls = %d, want 1", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 1", downloader.calls)
 	}
 }
 
 func TestNewMatcherRejectsNilDownloader(t *testing.T) {
 	_, err := NewMatcher(nil, &fakeExtractor{}, 8, 1, defaultTestPlan(), defaultTestLimits(), DefaultMatchRule())
 	if err == nil {
-		t.Fatal("expected nil downloader to be rejected")
+		t.Fatal("ожидалось, что загрузчик равен nil будет отклонен")
 	}
 }
 
 func TestNewMatcherRejectsInvalidLimits(t *testing.T) {
 	_, err := NewMatcher(&fakeDownloader{}, &fakeExtractor{}, 8, 1, defaultTestPlan(), Limits{}, DefaultMatchRule())
 	if err == nil {
-		t.Fatal("expected invalid limits to be rejected")
+		t.Fatal("ожидалось, что некорректные лимиты будет отклонен")
 	}
 }
 
@@ -330,7 +330,7 @@ func TestMatcherBlockRequiresStore(t *testing.T) {
 		Type:         domain.MediaAnimation,
 	})
 	if err == nil {
-		t.Fatal("expected missing store error")
+		t.Fatal("ожидалось: ошибка отсутствующего хранилища")
 	}
 }
 
@@ -357,7 +357,7 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 		SizeBytes:    7,
 	})
 	if err != nil {
-		t.Fatalf("block animation: %v", err)
+		t.Fatalf("блокировка анимации: %v", err)
 	}
 
 	blocked, err := matcher.IsBlocked(ctx, domain.Content{
@@ -368,10 +368,10 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 		SizeBytes:    5,
 	})
 	if err != nil {
-		t.Fatalf("is blocked animation: %v", err)
+		t.Fatalf("проверка блокировки анимации: %v", err)
 	}
 	if !blocked {
-		t.Fatal("expected animation to be blocked by stored fingerprint")
+		t.Fatal("ожидалось: анимация должна блокироваться сохраненным fingerprint")
 	}
 }
 
@@ -398,7 +398,7 @@ func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
 		SizeBytes:    7,
 	})
 	if err != nil {
-		t.Fatalf("block animation: %v", err)
+		t.Fatalf("блокировка анимации: %v", err)
 	}
 
 	extractor.extracted = domain.ExtractedMedia{
@@ -417,10 +417,10 @@ func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
 		SizeBytes:    5,
 	})
 	if err != nil {
-		t.Fatalf("is blocked animation: %v", err)
+		t.Fatalf("проверка блокировки анимации: %v", err)
 	}
 	if blocked {
-		t.Fatal("expected unrelated animation to be allowed")
+		t.Fatal("ожидалось: несвязанная анимация должна быть разрешена")
 	}
 }
 
@@ -447,7 +447,7 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 		SizeBytes:    7,
 	})
 	if err != nil {
-		t.Fatalf("block video sticker: %v", err)
+		t.Fatalf("блокировка видеостикера: %v", err)
 	}
 
 	blocked, err := matcher.IsBlocked(ctx, domain.Content{
@@ -458,10 +458,10 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 		SizeBytes:    5,
 	})
 	if err != nil {
-		t.Fatalf("is blocked video sticker: %v", err)
+		t.Fatalf("проверка блокировки видеостикера: %v", err)
 	}
 	if !blocked {
-		t.Fatal("expected video sticker to be blocked by stored fingerprint")
+		t.Fatal("ожидалось: видеостикер должен блокироваться сохраненным fingerprint")
 	}
 }
 
@@ -471,7 +471,7 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 
 	first, err := OpenSQLiteStore(ctx, dbPath)
 	if err != nil {
-		t.Fatalf("open sqlite store: %v", err)
+		t.Fatalf("открытие SQLite-хранилища: %v", err)
 	}
 	storedFingerprint, err := fingerprintVideoLike(domain.Content{
 		FileUniqueID: "stored-unique",
@@ -484,14 +484,14 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("fingerprint stored hash: %v", err)
+		t.Fatalf("создание fingerprint для сохраненного хеша: %v", err)
 	}
 	_, err = first.insert(ctx, storedFingerprint)
 	if err != nil {
-		t.Fatalf("insert stored hash: %v", err)
+		t.Fatalf("вставка сохраненного хеша: %v", err)
 	}
 	if err := first.close(); err != nil {
-		t.Fatalf("close first store: %v", err)
+		t.Fatalf("закрытие первого хранилища: %v", err)
 	}
 
 	downloader := &fakeDownloader{
@@ -521,11 +521,11 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 		MatchRule{MinMatchedFrames: 2, MinMatchedRatio: 1},
 	)
 	if err != nil {
-		t.Fatalf("new sqlite matcher: %v", err)
+		t.Fatalf("создание SQLite-матчера: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := matcher.Close(); err != nil {
-			t.Fatalf("close matcher: %v", err)
+			t.Fatalf("закрытие матчера: %v", err)
 		}
 	})
 
@@ -537,21 +537,21 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 		SizeBytes:    5,
 	})
 	if err != nil {
-		t.Fatalf("is blocked: %v", err)
+		t.Fatalf("проверка блокировки: %v", err)
 	}
 	if !blocked {
-		t.Fatal("expected loaded fingerprint to block query")
+		t.Fatal("ожидалось: загруженный fingerprint должен блокировать запрос")
 	}
 }
 
 func TestMatcherWithRealFFmpegRejectsDurationLimitBeforeExtraction(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		t.Skip("ffmpeg is not available")
+		t.Skip("ffmpeg недоступен")
 	}
 	extractor, err := media.NewFFmpegFrameExtractor(ffmpeg, time.Second)
 	if err != nil {
-		t.Fatalf("new ffmpeg extractor: %v", err)
+		t.Fatalf("создание ffmpeg-экстрактора: %v", err)
 	}
 	downloader := &fakeDownloader{}
 	limits := defaultTestLimits()
@@ -567,7 +567,7 @@ func TestMatcherWithRealFFmpegRejectsDurationLimitBeforeExtraction(t *testing.T)
 		DefaultMatchRule(),
 	)
 	if err != nil {
-		t.Fatalf("new matcher: %v", err)
+		t.Fatalf("создание матчера: %v", err)
 	}
 
 	_, err = matcher.IsBlocked(context.Background(), domain.Content{
@@ -577,10 +577,10 @@ func TestMatcherWithRealFFmpegRejectsDurationLimitBeforeExtraction(t *testing.T)
 		DurationSec:  2,
 	})
 	if err == nil {
-		t.Fatal("expected duration limit error")
+		t.Fatal("ожидалось: ошибка лимита длительности")
 	}
 	if downloader.calls != 0 {
-		t.Fatalf("download calls = %d, want 0", downloader.calls)
+		t.Fatalf("вызовы загрузки = %d, ожидалось 0", downloader.calls)
 	}
 }
 
@@ -595,7 +595,7 @@ func newTestMatcherWithLimits(t *testing.T, downloader *fakeDownloader, limits L
 
 	matcher, err := NewMatcher(downloader, &fakeExtractor{}, 8, 1, defaultTestPlan(), limits, DefaultMatchRule())
 	if err != nil {
-		t.Fatalf("new matcher: %v", err)
+		t.Fatalf("создание матчера: %v", err)
 	}
 
 	return matcher
@@ -616,11 +616,11 @@ func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader *fakeDow
 		MatchRule{MinMatchedFrames: 2, MinMatchedRatio: 1},
 	)
 	if err != nil {
-		t.Fatalf("new sqlite matcher: %v", err)
+		t.Fatalf("создание SQLite-матчера: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := matcher.Close(); err != nil {
-			t.Fatalf("close matcher: %v", err)
+			t.Fatalf("закрытие матчера: %v", err)
 		}
 	})
 
