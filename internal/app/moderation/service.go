@@ -2,10 +2,10 @@ package moderation
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
 type service struct {
@@ -19,14 +19,16 @@ func NewService(
 	admins ports.AdminChecker,
 	actions ports.MessageActions,
 ) (*service, error) {
+	const methodCtx = "moderation/NewService"
+
 	if contentMatcher == nil {
-		return nil, errors.New("moderation service content matcher is not configured")
+		return nil, apperrors.New(methodCtx, "сервис модерации: матчер контента не настроен")
 	}
 	if admins == nil {
-		return nil, errors.New("moderation service admin checker is not configured")
+		return nil, apperrors.New(methodCtx, "сервис модерации: проверка админов не настроена")
 	}
 	if actions == nil {
-		return nil, errors.New("moderation service message actions are not configured")
+		return nil, apperrors.New(methodCtx, "сервис модерации: действия с сообщениями не настроены")
 	}
 
 	return &service{
@@ -37,19 +39,21 @@ func NewService(
 }
 
 func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
+	const methodCtx = "moderation/service.HandleMessage"
+
 	if msg.IsCommand() {
 
 		switch msg.Command {
 
 		case "hello":
 			if err := s.actions.SendMessage(msg.ChatID, "Hello, World!"); err != nil {
-				return err
+				return apperrors.Wrap(methodCtx, err)
 			}
 		case "ban":
 			isAdmin, err := s.admins.IsAdmin(msg.ChatID, msg.SenderID)
 			if !isAdmin {
 				_ = s.actions.SendMessage(msg.ChatID, "Команда доступна только админам")
-				return err
+				return apperrors.Wrap(methodCtx, err)
 			}
 
 			if msg.ReplyTo == nil {
@@ -64,15 +68,15 @@ func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 			}
 
 			if err := s.contentMatcher.Block(ctx, *target.Content); err != nil {
-				return err
+				return apperrors.Wrap(methodCtx, err)
 			}
 
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
-				return err
+				return apperrors.Wrap(methodCtx, err)
 			}
 
 			if err := s.actions.DeleteMessage(msg.ChatID, msg.ID); err != nil {
-				return err
+				return apperrors.Wrap(methodCtx, err)
 			}
 		}
 
@@ -94,12 +98,12 @@ func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 
 		blocked, err := s.contentMatcher.IsBlocked(ctx, *target.Content)
 		if err != nil {
-			return err
+			return apperrors.Wrap(methodCtx, err)
 		}
 
 		if blocked {
 			if err := s.actions.DeleteMessage(target.ChatID, target.ID); err != nil {
-				return err
+				return apperrors.Wrap(methodCtx, err)
 			}
 		}
 	}
