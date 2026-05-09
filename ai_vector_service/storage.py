@@ -51,7 +51,7 @@ class IndexState:
 class SQLiteVectorStore:
     def __init__(self, path: str | Path) -> None:
         if not str(path):
-            raise ValueError("sqlite path is empty")
+            raise ValueError("путь к SQLite пустой")
 
         self._db = sqlite3.connect(path)
         self._db.row_factory = sqlite3.Row
@@ -310,26 +310,26 @@ ON ai_vector_frame(ban_id, frame_index);
         frames: list[VectorFrame],
     ) -> None:
         if not file_unique_id:
-            raise ValueError("file_unique_id is empty")
+            raise ValueError("file_unique_id пустой")
         if not media_type:
-            raise ValueError("media_type is empty")
+            raise ValueError("media_type пустой")
         if not model_name:
-            raise ValueError("model_name is empty")
+            raise ValueError("model_name пустой")
         if not model_revision:
-            raise ValueError("model_revision is empty")
+            raise ValueError("model_revision пустой")
         if vector_dim <= 0:
-            raise ValueError("vector_dim must be positive")
+            raise ValueError("vector_dim должен быть положительным")
         if not frames:
-            raise ValueError("at least one vector frame is required")
+            raise ValueError("требуется хотя бы один вектор кадра")
 
         seen_frame_indexes = set()
         for frame in frames:
             if frame.frame_index < 0:
-                raise ValueError("frame_index must be non-negative")
+                raise ValueError("frame_index не должен быть отрицательным")
             if frame.position_millis < 0:
-                raise ValueError("position_millis must be non-negative")
+                raise ValueError("position_millis не должен быть отрицательным")
             if frame.frame_index in seen_frame_indexes:
-                raise ValueError("frame_index must be unique")
+                raise ValueError("frame_index должен быть уникальным")
             seen_frame_indexes.add(frame.frame_index)
             _vector_to_blob(frame.vector, vector_dim)
 
@@ -372,7 +372,7 @@ def _rows_to_bans(rows: list[sqlite3.Row]) -> list[VectorBan]:
 
 def _vector_to_blob(vector: list[float], dimension: int) -> bytes:
     if len(vector) != dimension:
-        raise ValueError("vector dimension mismatch")
+        raise ValueError("размерность вектора не совпадает")
 
     return np.asarray(vector, dtype=np.float32).tobytes()
 
@@ -380,6 +380,6 @@ def _vector_to_blob(vector: list[float], dimension: int) -> bytes:
 def _blob_to_vector(blob: bytes, dimension: int) -> list[float]:
     vector = np.frombuffer(blob, dtype=np.float32)
     if vector.size != dimension:
-        raise ValueError("stored vector dimension mismatch")
+        raise ValueError("размерность сохраненного вектора не совпадает")
 
     return vector.astype(np.float32).tolist()
