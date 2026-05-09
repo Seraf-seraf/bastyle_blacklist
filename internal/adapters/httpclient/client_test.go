@@ -15,7 +15,7 @@ func TestNewUsesConfiguredProxy(t *testing.T) {
 
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok {
-		t.Fatalf("transport = %T, want *http.Transport", client.Transport)
+		t.Fatalf("транспорт = %T, ожидался *http.Transport", client.Transport)
 	}
 
 	request, err := http.NewRequest(http.MethodGet, "https://api.telegram.org", nil)
@@ -28,12 +28,12 @@ func TestNewUsesConfiguredProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if proxyURL.String() != "http://127.0.0.1:8080" {
-		t.Fatalf("proxy url = %q, want configured proxy", proxyURL.String())
+		t.Fatalf("URL прокси = %q, ожидалось настроенный прокси", proxyURL.String())
 	}
 }
 
 func TestNewRejectsInvalidProxyURL(t *testing.T) {
 	if _, err := New(Options{ProxyURL: "://bad"}); err == nil {
-		t.Fatal("expected error")
+		t.Fatal("ожидалось: ошибка")
 	}
 }
