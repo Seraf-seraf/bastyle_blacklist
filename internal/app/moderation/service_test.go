@@ -66,7 +66,7 @@ func TestHandleMessageBanBlocksTargetAndDeletesTargetThenCommand(t *testing.T) {
 	actions := &fakeActions{}
 	service, err := NewService(matcher, fakeAdmins{admin: true}, actions)
 	if err != nil {
-		t.Fatalf("new service: %v", err)
+		t.Fatalf("создание сервиса: %v", err)
 	}
 	content := domain.Content{
 		FileID:       "file-id",
@@ -91,7 +91,7 @@ func TestHandleMessageBanBlocksTargetAndDeletesTargetThenCommand(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(matcher.blocked, []domain.Content{content}) {
-		t.Fatalf("blocked content = %#v, want %#v", matcher.blocked, []domain.Content{content})
+		t.Fatalf("заблокированный контент = %#v, ожидалось %#v", matcher.blocked, []domain.Content{content})
 	}
 
 	wantDeleted := []deletedMessage{
@@ -99,7 +99,7 @@ func TestHandleMessageBanBlocksTargetAndDeletesTargetThenCommand(t *testing.T) {
 		{chatID: 100, messageID: 20},
 	}
 	if !reflect.DeepEqual(actions.deleted, wantDeleted) {
-		t.Fatalf("deleted messages = %#v, want %#v", actions.deleted, wantDeleted)
+		t.Fatalf("удаленные сообщения = %#v, ожидалось %#v", actions.deleted, wantDeleted)
 	}
 }
 
@@ -109,7 +109,7 @@ func TestHandleMessageBanDoesNotBlockOrDeleteTextReply(t *testing.T) {
 	actions := &fakeActions{}
 	service, err := NewService(matcher, fakeAdmins{admin: true}, actions)
 	if err != nil {
-		t.Fatalf("new service: %v", err)
+		t.Fatalf("создание сервиса: %v", err)
 	}
 
 	msg := domain.Message{
@@ -128,18 +128,18 @@ func TestHandleMessageBanDoesNotBlockOrDeleteTextReply(t *testing.T) {
 	}
 
 	if len(matcher.blocked) != 0 {
-		t.Fatalf("blocked content = %#v, want empty", matcher.blocked)
+		t.Fatalf("заблокированный контент = %#v, ожидался пустой список", matcher.blocked)
 	}
 
 	if len(actions.deleted) != 0 {
-		t.Fatalf("deleted messages = %#v, want empty", actions.deleted)
+		t.Fatalf("удаленные сообщения = %#v, ожидался пустой список", actions.deleted)
 	}
 
 	wantSent := []sentMessage{
 		{chatID: 100, text: "Текстовые сообщения не баним"},
 	}
 	if !reflect.DeepEqual(actions.sent, wantSent) {
-		t.Fatalf("sent messages = %#v, want %#v", actions.sent, wantSent)
+		t.Fatalf("отправленные сообщения = %#v, ожидалось %#v", actions.sent, wantSent)
 	}
 }
 
@@ -149,14 +149,14 @@ func TestNewServiceRejectsNilDependencies(t *testing.T) {
 	actions := &fakeActions{}
 
 	if _, err := NewService(nil, admins, actions); err == nil {
-		t.Fatal("expected nil content matcher to be rejected")
+		t.Fatal("ожидалось, что матчер контента nil будет отклонен")
 	}
 
 	if _, err := NewService(matcher, nil, actions); err == nil {
-		t.Fatal("expected nil admin checker to be rejected")
+		t.Fatal("ожидалось, что проверка админов равна nil будет отклонена")
 	}
 
 	if _, err := NewService(matcher, admins, nil); err == nil {
-		t.Fatal("expected nil message actions to be rejected")
+		t.Fatal("ожидалось, что действия сообщений равны nil будут отклонены")
 	}
 }
