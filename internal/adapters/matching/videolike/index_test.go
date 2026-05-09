@@ -31,16 +31,16 @@ func TestLinearIndexSearchReturnsMatchedFrameCountAndRatio(t *testing.T) {
 		},
 	}, 0)
 	if !matched {
-		t.Fatal("expected matching video-like fingerprint")
+		t.Fatal("ожидалось: совпадающий video-like fingerprint")
 	}
 	if result.Stored.ID != 42 {
-		t.Fatalf("matched stored id = %d, want 42", result.Stored.ID)
+		t.Fatalf("id совпавшего хеша = %d, ожидалось 42", result.Stored.ID)
 	}
 	if result.MatchedFrames != 2 {
-		t.Fatalf("matched frames = %d, want 2", result.MatchedFrames)
+		t.Fatalf("совпавшие кадры = %d, ожидалось 2", result.MatchedFrames)
 	}
 	if result.MatchedRatio != 0.5 {
-		t.Fatalf("matched ratio = %f, want 0.5", result.MatchedRatio)
+		t.Fatalf("доля совпадения = %f, ожидалось 0.5", result.MatchedRatio)
 	}
 }
 
@@ -66,7 +66,7 @@ func TestLinearIndexSearchRejectsOneMatchingFrame(t *testing.T) {
 		},
 	}, 0)
 	if matched {
-		t.Fatal("expected one matched frame to be rejected")
+		t.Fatal("ожидалось: один совпавший кадр должен быть отклонен")
 	}
 }
 
@@ -95,7 +95,7 @@ func TestLinearIndexSearchRejectsBelowRatio(t *testing.T) {
 		},
 	}, 0)
 	if matched {
-		t.Fatal("expected match below ratio to be rejected")
+		t.Fatal("ожидалось: совпадение ниже доли должно быть отклонено")
 	}
 }
 
@@ -117,7 +117,7 @@ func TestLinearIndexSearchRejectsHashVersionMismatch(t *testing.T) {
 		},
 	}, 0)
 	if matched {
-		t.Fatal("expected hash version mismatch to be rejected")
+		t.Fatal("ожидалась ошибка при несовпадении версии хеша")
 	}
 }
 
@@ -136,10 +136,10 @@ func TestLinearIndexAddManyDeduplicatesHashes(t *testing.T) {
 
 	result, matched := index.Search(hash, 0)
 	if !matched {
-		t.Fatal("expected deduplicated hash to be searchable")
+		t.Fatal("ожидалось: дедуплицированный хеш должен находиться поиском")
 	}
 	if result.Stored.ID != 1 {
-		t.Fatalf("matched stored id = %d, want 1", result.Stored.ID)
+		t.Fatalf("id совпавшего хеша = %d, ожидалось 1", result.Stored.ID)
 	}
 }
 
@@ -161,10 +161,10 @@ func TestLinearIndexKeepsSameFrameSignatureForDifferentHashVersions(t *testing.T
 
 	result, matched := index.Search(otherVersion, 0)
 	if !matched {
-		t.Fatal("expected other version hash to be searchable")
+		t.Fatal("ожидалось: хеш другой версии должен находиться поиском")
 	}
 	if result.Stored.ID != 2 {
-		t.Fatalf("matched stored id = %d, want 2", result.Stored.ID)
+		t.Fatalf("id совпавшего хеша = %d, ожидалось 2", result.Stored.ID)
 	}
 }
 
@@ -179,12 +179,12 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				if _, matched := index.Search(query, 8); matched {
-					b.Fatal("expected no match")
+					b.Fatal("ожидалось: отсутствие совпадения")
 				}
 			}
 		})
 
-		b.Run(strconv.Itoa(size)+"_match_last", func(b *testing.B) {
+		b.Run(strconv.Itoa(size)+"_совпадение_last", func(b *testing.B) {
 			index := benchmarkVideoLikeIndex(size)
 			query := benchmarkVideoLikeHash("matching-item", 0x1111_2222_3333_4444)
 			index.Add(query)
@@ -194,7 +194,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				if _, matched := index.Search(query, 8); !matched {
-					b.Fatal("expected match")
+					b.Fatal("ожидалось: совпадение")
 				}
 			}
 		})
@@ -219,7 +219,7 @@ func BenchmarkVideoLikeLinearIndexSearch(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				if _, matched := index.Search(query, 8); matched {
-					b.Fatal("expected no match")
+					b.Fatal("ожидалось: отсутствие совпадения")
 				}
 			}
 		})
