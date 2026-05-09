@@ -215,7 +215,7 @@ VALUES (
 def test_sqlite_vector_store_rejects_invalid_vectors(tmp_path: Path):
     store = _new_store(tmp_path)
 
-    with pytest.raises(ValueError, match="vector dimension mismatch"):
+    with pytest.raises(ValueError, match="размерность вектора не совпадает"):
         store.insert_ban(
             file_unique_id="file-unique-id",
             media_type="photo",
