@@ -16,7 +16,7 @@ from ai_vector_service.storage import StoredVectorFrame, VectorBan
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Measure static-image FP/FN for candidate AI-vector thresholds.")
+    parser = argparse.ArgumentParser(description="Измерить FP/FN статичных изображений для кандидатных порогов AI-vector.")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--ban-count", type=int, default=1000)
     parser.add_argument("--negative-count", type=int, default=1000)
@@ -30,28 +30,28 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.ban_count <= 0 or args.negative_count <= 0:
-        raise SystemExit("--ban-count and --negative-count must be positive")
+        raise SystemExit("--ban-count и --negative-count должны быть положительными")
 
     thresholds = [float(part.strip()) for part in args.thresholds.split(",") if part.strip()]
     records = _read_manifest(args.manifest, args.ban_count + args.negative_count)
     ban_records = records[: args.ban_count]
     negative_records = records[args.ban_count : args.ban_count + args.negative_count]
     if len(negative_records) < args.negative_count:
-        raise RuntimeError("manifest does not contain enough images for negatives")
+        raise RuntimeError("манифест содержит недостаточно изображений для негативных примеров")
 
     decoder = PillowImageDecoder()
     model = TransformersImageEmbeddingModel(args.model_name, args.model_revision, args.device)
 
     started = time.perf_counter()
     ban_vectors = _embed_paths(model, decoder, [Path(record["path"]) for record in ban_records], args.batch_size)
-    print(f"embedded bans={len(ban_vectors)} elapsed={time.perf_counter() - started:.1f}s")
+    print(f"векторизовано банов={len(ban_vectors)} время={time.perf_counter() - started:.1f}s")
 
     variant_images = [_variant_image(Path(record["path"])) for record in ban_records]
     positive_vectors = _embed_images(model, variant_images, args.batch_size)
-    print(f"embedded positives={len(positive_vectors)} elapsed={time.perf_counter() - started:.1f}s")
+    print(f"векторизовано позитивных={len(positive_vectors)} время={time.perf_counter() - started:.1f}s")
 
     negative_vectors = _embed_paths(model, decoder, [Path(record["path"]) for record in negative_records], args.batch_size)
-    print(f"embedded negatives={len(negative_vectors)} elapsed={time.perf_counter() - started:.1f}s")
+    print(f"векторизовано негативных={len(negative_vectors)} время={time.perf_counter() - started:.1f}s")
 
     index = FaissHNSWVectorIndex.build(
         dimension=len(ban_vectors[0]),
@@ -91,7 +91,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(report["thresholds"], indent=2, sort_keys=True))
-    print(f"report: {args.output}")
+    print(f"отчет: {args.output}")
 
 
 def _read_manifest(path: Path, limit: int) -> list[dict]:
