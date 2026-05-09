@@ -2,13 +2,13 @@ package config
 
 import (
 	"bytes"
-	"errors"
 	"net"
 	"net/url"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/dustin/go-humanize"
 	"gopkg.in/yaml.v3"
 )
@@ -115,14 +115,16 @@ type HNSW struct {
 type Duration time.Duration
 
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
+	const methodCtx = "config/Duration.UnmarshalYAML"
+
 	var raw string
 	if err := value.Decode(&raw); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	duration, err := time.ParseDuration(raw)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	*d = Duration(duration)
@@ -136,14 +138,16 @@ func (d *Duration) Value() time.Duration {
 type ByteSize int64
 
 func (s *ByteSize) UnmarshalYAML(value *yaml.Node) error {
+	const methodCtx = "config/ByteSize.UnmarshalYAML"
+
 	var raw string
 	if err := value.Decode(&raw); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	size, err := humanize.ParseBytes(raw)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	*s = ByteSize(size)
@@ -163,21 +167,23 @@ func (s AIVectorService) URL() string {
 }
 
 func Load(path string) (Config, error) {
+	const methodCtx = "config/Load"
+
 	cfg := defaultConfig()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, err
+		return Config{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, err
+		return Config{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	if err := cfg.validate(); err != nil {
-		return Config{}, err
+		return Config{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	return cfg, nil
@@ -256,174 +262,182 @@ func defaultMediaConfig() MediaConfig {
 }
 
 func (c Config) validate() error {
+	const methodCtx = "config/Config.validate"
+
 	if c.Telegram.Token == "" {
-		return errors.New("telegram token is required")
+		return apperrors.New(methodCtx, "токен Telegram обязателен")
 	}
 	if c.Telegram.UpdateTimeoutSeconds <= 0 {
-		return errors.New("telegram update timeout must be positive")
+		return apperrors.New(methodCtx, "таймаут обновлений Telegram должен быть положительным")
 	}
 	if c.Telegram.HTTPClient.Enabled && c.Telegram.HTTPClient.ProxyURL != "" {
 		proxyURL, err := url.Parse(c.Telegram.HTTPClient.ProxyURL)
 		if err != nil {
-			return err
+			return apperrors.Wrap(methodCtx, err)
 		}
 		if proxyURL.Scheme == "" || proxyURL.Host == "" {
-			return errors.New("telegram http client proxy url must include scheme and host")
+			return apperrors.New(methodCtx, "URL прокси HTTP-клиента Telegram должен содержать схему и хост")
 		}
 	}
 	if c.Workers <= 0 {
-		return errors.New("workers must be positive")
+		return apperrors.New(methodCtx, "количество воркеров должно быть положительным")
 	}
 	if c.Health.Enabled {
 		if c.Health.Host == "" {
-			return errors.New("health host is required")
+			return apperrors.New(methodCtx, "хост health-сервера обязателен")
 		}
 		if c.Health.Port <= 0 {
-			return errors.New("health port must be positive")
+			return apperrors.New(methodCtx, "порт health-сервера должен быть положительным")
 		}
 	}
 	if c.JobsBuffer <= 0 {
-		return errors.New("jobs buffer must be positive")
+		return apperrors.New(methodCtx, "буфер задач должен быть положительным")
 	}
 	if c.Matching.Exact.Buffer <= 0 {
-		return errors.New("exact matcher buffer must be positive")
+		return apperrors.New(methodCtx, "буфер exact-матчера должен быть положительным")
 	}
 	if c.Matching.ImageHash.DBPath == "" {
-		return errors.New("image hash db path is required")
+		return apperrors.New(methodCtx, "путь к БД image-hash обязателен")
 	}
 	if c.Matching.ImageHash.Threshold < 0 {
-		return errors.New("image hash threshold must not be negative")
+		return apperrors.New(methodCtx, "порог image-hash не должен быть отрицательным")
 	}
 	if c.Matching.ImageHash.Buffer <= 0 {
-		return errors.New("image hash buffer must be positive")
+		return apperrors.New(methodCtx, "буфер image-hash должен быть положительным")
 	}
-	if err := c.MediaConfig.validate("media config"); err != nil {
-		return err
+	if err := c.MediaConfig.validate("настройки медиа"); err != nil {
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if err := c.Matching.AIVector.validate(); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if c.Matching.VideoLike.DBPath == "" {
-		return errors.New("video like db path is required")
+		return apperrors.New(methodCtx, "путь к БД video-like обязателен")
 	}
 	if c.Matching.VideoLike.Threshold < 0 {
-		return errors.New("video like threshold must not be negative")
+		return apperrors.New(methodCtx, "порог video-like не должен быть отрицательным")
 	}
 	if c.Matching.VideoLike.Buffer <= 0 {
-		return errors.New("video like buffer must be positive")
+		return apperrors.New(methodCtx, "буфер video-like должен быть положительным")
 	}
-	if err := validateFrameMatchRule("video like", c.Matching.VideoLike.MinMatchedFrames, c.Matching.VideoLike.MinMatchedRatio); err != nil {
-		return err
+	if err := validateFrameMatchRule("video-like matcher", c.Matching.VideoLike.MinMatchedFrames, c.Matching.VideoLike.MinMatchedRatio); err != nil {
+		return apperrors.Wrap(methodCtx, err)
 	}
 	return nil
 }
 
 func (c AIVector) validate() error {
+	const methodCtx = "config/AIVector.validate"
+
 	if !c.Enabled {
 		return nil
 	}
 	if c.ModelName == "" {
-		return errors.New("ai vector model name is required")
+		return apperrors.New(methodCtx, "имя модели AI-vector обязательно")
 	}
 	if c.ModelRevision == "" {
-		return errors.New("ai vector model revision is required")
+		return apperrors.New(methodCtx, "ревизия модели AI-vector обязательна")
 	}
 	if c.Device == "" {
-		return errors.New("ai vector device is required")
+		return apperrors.New(methodCtx, "устройство AI-vector обязательно")
 	}
 	if c.DBPath == "" {
-		return errors.New("ai vector db path is required")
+		return apperrors.New(methodCtx, "путь к БД AI-vector обязателен")
 	}
 	if c.IndexPath == "" {
-		return errors.New("ai vector index path is required")
+		return apperrors.New(methodCtx, "путь к индексу AI-vector обязателен")
 	}
 	if c.MaxFiles <= 0 {
-		return errors.New("ai vector max files must be positive")
+		return apperrors.New(methodCtx, "максимальное количество файлов AI-vector должно быть положительным")
 	}
 	if c.Threshold < 0 || c.Threshold > 1 {
-		return errors.New("ai vector threshold must be between 0 and 1")
+		return apperrors.New(methodCtx, "порог AI-vector должен быть от 0 до 1")
 	}
 	if c.TopK <= 0 {
-		return errors.New("ai vector top k must be positive")
+		return apperrors.New(methodCtx, "AI-vector top_k должен быть положительным")
 	}
-	if err := validateFrameMatchRule("ai vector", c.MinMatchedFrames, c.MinMatchedRatio); err != nil {
-		return err
+	if err := validateFrameMatchRule("AI-vector", c.MinMatchedFrames, c.MinMatchedRatio); err != nil {
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if c.RequestTimeout.Value() <= 0 {
-		return errors.New("ai vector request timeout must be positive")
+		return apperrors.New(methodCtx, "таймаут запроса к AI-vector должен быть положительным")
 	}
 	if c.Service.Host == "" {
-		return errors.New("ai vector service host is required")
+		return apperrors.New(methodCtx, "хост AI-vector сервиса обязателен")
 	}
 	if c.Service.Port <= 0 {
-		return errors.New("ai vector service port must be positive")
+		return apperrors.New(methodCtx, "порт AI-vector сервиса должен быть положительным")
 	}
 	if c.HNSW.M <= 0 {
-		return errors.New("ai vector hnsw m must be positive")
+		return apperrors.New(methodCtx, "параметр HNSW M для AI-vector должен быть положительным")
 	}
 	if c.HNSW.EFConstruction <= 0 {
-		return errors.New("ai vector hnsw ef construction must be positive")
+		return apperrors.New(methodCtx, "параметр HNSW ef construction для AI-vector должен быть положительным")
 	}
 	if c.HNSW.EFSearch <= 0 {
-		return errors.New("ai vector hnsw ef search must be positive")
+		return apperrors.New(methodCtx, "параметр HNSW ef search для AI-vector должен быть положительным")
 	}
 
 	return nil
 }
 
 func validateFrameMatchRule(prefix string, minMatchedFrames int, minMatchedRatio float64) error {
+	const methodCtx = "config/validateFrameMatchRule"
+
 	if minMatchedFrames <= 0 {
-		return errors.New(prefix + " min matched frames must be positive")
+		return apperrors.New(methodCtx, prefix+": минимальное количество совпавших кадров должно быть положительным")
 	}
 	if minMatchedRatio <= 0 || minMatchedRatio > 1 {
-		return errors.New(prefix + " min matched ratio must be between 0 and 1")
+		return apperrors.New(methodCtx, prefix+": минимальная доля совпавших кадров должна быть от 0 до 1")
 	}
 
 	return nil
 }
 
 func (c MediaConfig) validate(prefix string) error {
+	const methodCtx = "config/MediaConfig.validate"
+
 	if c.MaxFrames <= 0 {
-		return errors.New(prefix + " max frames must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальное количество кадров должно быть положительным")
 	}
 	if c.MaxFrames > maxMediaConfigFrames {
-		return errors.New(prefix + " max frames is too large")
+		return apperrors.New(methodCtx, prefix+": максимальное количество кадров слишком большое")
 	}
 	if c.TargetWidth <= 0 {
-		return errors.New(prefix + " target width must be positive")
+		return apperrors.New(methodCtx, prefix+": целевая ширина должна быть положительной")
 	}
 	if c.TargetWidth > maxMediaConfigTargetDimension {
-		return errors.New(prefix + " target width is too large")
+		return apperrors.New(methodCtx, prefix+": целевая ширина слишком большая")
 	}
 	if c.TargetHeight <= 0 {
-		return errors.New(prefix + " target height must be positive")
+		return apperrors.New(methodCtx, prefix+": целевая высота должна быть положительной")
 	}
 	if c.TargetHeight > maxMediaConfigTargetDimension {
-		return errors.New(prefix + " target height is too large")
+		return apperrors.New(methodCtx, prefix+": целевая высота слишком большая")
 	}
 	if c.MaxUploadBytes.Bytes() <= 0 {
-		return errors.New(prefix + " max upload bytes must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальный размер загрузки должен быть положительным")
 	}
 	if c.MaxImagePixels <= 0 {
-		return errors.New(prefix + " max image pixels must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальное количество пикселей изображения должно быть положительным")
 	}
 	if c.MaxAnimationDuration.Value() <= 0 {
-		return errors.New(prefix + " max animation duration must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальная длительность анимации должна быть положительной")
 	}
 	if c.MaxVideoStickerDuration.Value() <= 0 {
-		return errors.New(prefix + " max video sticker duration must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальная длительность видеостикера должна быть положительной")
 	}
 	if c.MaxAnimationSize.Bytes() <= 0 {
-		return errors.New(prefix + " max animation size must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальный размер анимации должен быть положительным")
 	}
 	if c.MaxVideoStickerSize.Bytes() <= 0 {
-		return errors.New(prefix + " max video sticker size must be positive")
+		return apperrors.New(methodCtx, prefix+": максимальный размер видеостикера должен быть положительным")
 	}
 	if c.FFmpegBinary == "" {
-		return errors.New(prefix + " ffmpeg binary is required")
+		return apperrors.New(methodCtx, prefix+": бинарный файл ffmpeg обязателен")
 	}
 	if c.FFmpegTimeout.Value() <= 0 {
-		return errors.New(prefix + " ffmpeg timeout must be positive")
+		return apperrors.New(methodCtx, prefix+": таймаут ffmpeg должен быть положительным")
 	}
 
 	return nil
