@@ -1,9 +1,7 @@
 APP := bastyle-blacklist
-MAIN := ./cmd/main.go
 BUILD_DIR := build/bin
 IMAGE ?= $(APP):local
 CONFIG ?= configs/config.yaml
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMPOSE := docker compose -f build/docker-compose.yaml --project-directory .
 
 .PHONY: help fmt fmt-check vet test py-test build clean up stop down ps logs ai-data-10k ai-data-50k ai-data-100k ai-hnsw-bench ai-static-quality ci
@@ -46,7 +44,7 @@ py-test:
 
 build:
 	mkdir -p $(BUILD_DIR)
-	go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(BUILD_DIR)/$(APP) $(MAIN)
+	go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/$(APP) ./cmd/main.go
 
 clean:
 	rm -rf $(BUILD_DIR)
