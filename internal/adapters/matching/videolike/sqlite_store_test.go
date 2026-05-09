@@ -107,6 +107,50 @@ func TestSQLiteStoreDeduplicatesVideoLikeHashes(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreKeepsSameVideoLikeHashInDifferentChats(t *testing.T) {
+	ctx := context.Background()
+	store := newTestSQLiteStore(t, ctx)
+
+	hash := StoredVideoLikeHash{
+		FileUniqueID: "file-unique-id",
+		SourceType:   domain.MediaAnimation,
+		DurationSec:  3,
+		HashVersion:  videoLikeHashVersion,
+		Frames: []StoredVideoLikeFrameHash{
+			{FrameIndex: 0, PositionMillis: 0, Hash: 10},
+			{FrameIndex: 1, PositionMillis: 1000, Hash: 20},
+			{FrameIndex: 2, PositionMillis: 2000, Hash: 30},
+		},
+	}
+	first := hash
+	first.ChatID = 10
+	second := hash
+	second.ChatID = 20
+
+	firstID, err := store.insert(ctx, first)
+	if err != nil {
+		t.Fatalf("вставка video-like hash первого чата: %v", err)
+	}
+	secondID, err := store.insert(ctx, second)
+	if err != nil {
+		t.Fatalf("вставка video-like hash второго чата: %v", err)
+	}
+	if secondID == firstID {
+		t.Fatalf("ожидались разные строки для разных чатов, получен id %d", secondID)
+	}
+
+	hashes, err := store.load(ctx)
+	if err != nil {
+		t.Fatalf("загрузка video-like hash: %v", err)
+	}
+	if len(hashes) != 2 {
+		t.Fatalf("ожидалось: 2 сохраненных video-like hash, получено %d", len(hashes))
+	}
+	if hashes[0].ChatID != 10 || hashes[1].ChatID != 20 {
+		t.Fatalf("chat_id сохраненных хешей = [%d %d], ожидалось [10 20]", hashes[0].ChatID, hashes[1].ChatID)
+	}
+}
+
 func TestSQLiteStoreLoadsMultipleVideoLikeHashes(t *testing.T) {
 	ctx := context.Background()
 	store := newTestSQLiteStore(t, ctx)

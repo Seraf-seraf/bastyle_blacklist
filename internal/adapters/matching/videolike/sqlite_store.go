@@ -50,7 +50,7 @@ func (s *sqliteStore) load(ctx context.Context) ([]StoredVideoLikeHash, error) {
 	const methodCtx = "videolike/sqliteStore.load"
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT bvl.id, bvl.file_unique_id, bvl.source_type, bvl.duration_sec, bvl.hash_version,
+SELECT bvl.id, bvl.chat_id, bvl.file_unique_id, bvl.source_type, bvl.duration_sec, bvl.hash_version,
        bvlfh.frame_index, bvlfh.position_millis, bvlfh.hash_uint64
 FROM blocked_video_like bvl
 JOIN blocked_video_like_frame_hash bvlfh ON bvlfh.video_like_id = bvl.id
@@ -67,6 +67,7 @@ ORDER BY bvl.id, bvlfh.frame_index
 
 	for rows.Next() {
 		var id int64
+		var chatID int64
 		var fileUniqueID string
 		var sourceType string
 		var durationSec int
@@ -75,7 +76,7 @@ ORDER BY bvl.id, bvlfh.frame_index
 		var positionMillis int
 		var hashText string
 
-		if err := rows.Scan(&id, &fileUniqueID, &sourceType, &durationSec, &hashVersion, &frameIndex, &positionMillis, &hashText); err != nil {
+		if err := rows.Scan(&id, &chatID, &fileUniqueID, &sourceType, &durationSec, &hashVersion, &frameIndex, &positionMillis, &hashText); err != nil {
 			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
@@ -88,6 +89,7 @@ ORDER BY bvl.id, bvlfh.frame_index
 		if !ok {
 			storedHash = &StoredVideoLikeHash{
 				ID:           id,
+				ChatID:       chatID,
 				FileUniqueID: fileUniqueID,
 				SourceType:   domain.MediaType(sourceType),
 				DurationSec:  durationSec,
@@ -139,9 +141,9 @@ func (s *sqliteStore) insert(ctx context.Context, hash StoredVideoLikeHash) (int
 
 	signature := videoLikeHashSignature(hash.Frames)
 	_, err = tx.ExecContext(ctx, `
-INSERT OR IGNORE INTO blocked_video_like (file_unique_id, source_type, duration_sec, hash_version, hash_signature)
-VALUES (?, ?, ?, ?, ?)
-`, hash.FileUniqueID, string(hash.SourceType), hash.DurationSec, hashVersion, signature)
+INSERT OR IGNORE INTO blocked_video_like (chat_id, file_unique_id, source_type, duration_sec, hash_version, hash_signature)
+VALUES (?, ?, ?, ?, ?, ?)
+`, hash.ChatID, hash.FileUniqueID, string(hash.SourceType), hash.DurationSec, hashVersion, signature)
 	if err != nil {
 		return 0, apperrors.Wrap(methodCtx, err)
 	}
@@ -151,7 +153,8 @@ VALUES (?, ?, ?, ?, ?)
 SELECT id
 FROM blocked_video_like
 WHERE hash_version = ? AND hash_signature = ?
-`, hashVersion, signature).Scan(&id)
+  AND chat_id = ?
+`, hashVersion, signature, hash.ChatID).Scan(&id)
 	if err != nil {
 		return 0, apperrors.Wrap(methodCtx, err)
 	}
@@ -183,6 +186,7 @@ PRAGMA busy_timeout = 5000;
 
 CREATE TABLE IF NOT EXISTS blocked_video_like (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	chat_id INTEGER NOT NULL DEFAULT 0,
 	file_unique_id TEXT NOT NULL,
 	source_type TEXT NOT NULL,
 	duration_sec INTEGER NOT NULL,
@@ -202,11 +206,16 @@ CREATE TABLE IF NOT EXISTS blocked_video_like_frame_hash (
 
 CREATE INDEX IF NOT EXISTS blocked_video_like_hash_version_idx
 ON blocked_video_like(hash_version);
-
-CREATE UNIQUE INDEX IF NOT EXISTS blocked_video_like_hash_signature_idx
-ON blocked_video_like(hash_version, hash_signature)
-WHERE hash_signature <> '';
 `)
+	if err != nil {
+		return apperrors.Wrap(methodCtx, err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+	CREATE UNIQUE INDEX IF NOT EXISTS blocked_video_like_chat_hash_signature_idx
+	ON blocked_video_like(chat_id, hash_version, hash_signature)
+	WHERE hash_signature <> '';
+	`)
 	return apperrors.Wrap(methodCtx, err)
 }
 

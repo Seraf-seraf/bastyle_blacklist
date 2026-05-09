@@ -98,7 +98,7 @@ func (m *matcher) Close() error {
 	return apperrors.Wrap(methodCtx, m.store.close())
 }
 
-func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+func (m *matcher) IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error) {
 	const methodCtx = "imagehash/matcher.IsBlocked"
 
 	if !m.supports(content) {
@@ -113,10 +113,10 @@ func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 		return false, nil
 	}
 
-	return m.index.Search(hashes, m.threshold), nil
+	return m.index.Search(chatID, hashes, m.threshold), nil
 }
 
-func (m *matcher) Block(ctx context.Context, content domain.Content) error {
+func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
 	const methodCtx = "imagehash/matcher.Block"
 
 	if !m.supports(content) {
@@ -135,6 +135,7 @@ func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 	}
 
 	storedHash := StoredImageHash{
+		ChatID:       chatID,
 		FileUniqueID: content.FileUniqueID,
 		MediaType:    content.Type,
 		Hashes:       hashes,

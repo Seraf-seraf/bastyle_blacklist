@@ -324,7 +324,7 @@ func TestMatcherBlockRequiresStore(t *testing.T) {
 		},
 	})
 
-	err := matcher.Block(context.Background(), domain.Content{
+	err := matcher.Block(context.Background(), 10, domain.Content{
 		FileID:       "animation-file",
 		FileUniqueID: "animation-unique",
 		Type:         domain.MediaAnimation,
@@ -349,7 +349,7 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
 	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
 
-	err := matcher.Block(ctx, domain.Content{
+	err := matcher.Block(ctx, 10, domain.Content{
 		FileID:       "blocked-file",
 		FileUniqueID: "blocked-unique",
 		Type:         domain.MediaAnimation,
@@ -360,7 +360,7 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 		t.Fatalf("блокировка анимации: %v", err)
 	}
 
-	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+	blocked, err := matcher.IsBlocked(ctx, 10, domain.Content{
 		FileID:       "query-file",
 		FileUniqueID: "query-unique",
 		Type:         domain.MediaAnimation,
@@ -390,7 +390,7 @@ func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
 	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
 
-	err := matcher.Block(ctx, domain.Content{
+	err := matcher.Block(ctx, 10, domain.Content{
 		FileID:       "blocked-file",
 		FileUniqueID: "blocked-unique",
 		Type:         domain.MediaAnimation,
@@ -409,7 +409,7 @@ func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
 		},
 	}
 
-	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+	blocked, err := matcher.IsBlocked(ctx, 10, domain.Content{
 		FileID:       "query-file",
 		FileUniqueID: "query-unique",
 		Type:         domain.MediaAnimation,
@@ -439,7 +439,7 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
 	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
 
-	err := matcher.Block(ctx, domain.Content{
+	err := matcher.Block(ctx, 10, domain.Content{
 		FileID:       "blocked-sticker",
 		FileUniqueID: "blocked-sticker-unique",
 		Type:         domain.MediaStickerStatic,
@@ -450,7 +450,7 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 		t.Fatalf("блокировка видеостикера: %v", err)
 	}
 
-	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+	blocked, err := matcher.IsBlocked(ctx, 10, domain.Content{
 		FileID:       "query-sticker",
 		FileUniqueID: "query-sticker-unique",
 		Type:         domain.MediaStickerStatic,
@@ -486,6 +486,7 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("создание fingerprint для сохраненного хеша: %v", err)
 	}
+	storedFingerprint.ChatID = 10
 	_, err = first.insert(ctx, storedFingerprint)
 	if err != nil {
 		t.Fatalf("вставка сохраненного хеша: %v", err)
@@ -529,7 +530,7 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 		}
 	})
 
-	blocked, err := matcher.IsBlocked(ctx, domain.Content{
+	blocked, err := matcher.IsBlocked(ctx, 10, domain.Content{
 		FileID:       "query-file",
 		FileUniqueID: "query-unique",
 		Type:         domain.MediaAnimation,
@@ -570,7 +571,7 @@ func TestMatcherWithRealFFmpegRejectsDurationLimitBeforeExtraction(t *testing.T)
 		t.Fatalf("создание матчера: %v", err)
 	}
 
-	_, err = matcher.IsBlocked(context.Background(), domain.Content{
+	_, err = matcher.IsBlocked(context.Background(), 10, domain.Content{
 		FileID:       "long-animation-file",
 		FileUniqueID: "long-animation-unique",
 		Type:         domain.MediaAnimation,

@@ -14,6 +14,7 @@ const (
 
 type StoredVideoLikeHash struct {
 	ID           int64
+	ChatID       int64
 	FileUniqueID string
 	SourceType   domain.MediaType
 	DurationSec  int

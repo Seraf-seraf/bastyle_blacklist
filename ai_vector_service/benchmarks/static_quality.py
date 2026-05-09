@@ -140,6 +140,7 @@ def _bans_from_vectors(vectors: list[list[float]]) -> list[VectorBan]:
         bans.append(
             VectorBan(
                 id=ban_id,
+                chat_id=10,
                 file_unique_id=f"quality-{ban_id}",
                 media_type="photo",
                 model_name="quality",

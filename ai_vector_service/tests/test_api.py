@@ -30,9 +30,10 @@ class FakeVectorService:
         self.bans = []
         self.searches = []
 
-    def add_ban(self, *, file_unique_id, media_type, frames, dimension):
+    def add_ban(self, *, chat_id, file_unique_id, media_type, frames, dimension):
         self.bans.append(
             {
+                "chat_id": chat_id,
                 "file_unique_id": file_unique_id,
                 "media_type": media_type,
                 "frames": frames,
@@ -41,12 +42,12 @@ class FakeVectorService:
         )
         return 42
 
-    def search(self, *, frames, dimension, top_k):
-        self.searches.append({"frames": frames, "dimension": dimension, "top_k": top_k})
+    def search(self, *, chat_id, frames, dimension, top_k):
+        self.searches.append({"chat_id": chat_id, "frames": frames, "dimension": dimension, "top_k": top_k})
         return [
             FrameSearchResponse(
                 frame_index=0,
-                hits=[VectorSearchHitResponse(ban_id=42, frame_index=0, score=0.95)],
+                hits=[VectorSearchHitResponse(ban_id=42, chat_id=chat_id, frame_index=0, score=0.95)],
             )
         ]
 
@@ -150,7 +151,7 @@ def test_ban_saves_vectors():
 
     response = client.post(
         "/ban",
-        data={"file_unique_id": "file-unique-id", "media_type": "photo"},
+        data={"chat_id": "10", "file_unique_id": "file-unique-id", "media_type": "photo"},
         files=[("files", ("frame.png", png_bytes(), "image/png"))],
     )
 
@@ -183,6 +184,7 @@ def test_vector_index_service_deactivates_ban_when_index_update_fails(tmp_path):
     try:
         try:
             service.add_ban(
+                chat_id=10,
                 file_unique_id="file-unique-id",
                 media_type="photo",
                 frames=[FrameEmbedding(frame_index=0, vector=[1.0, 0.0, 0.0])],
@@ -212,7 +214,7 @@ def test_search_returns_hits():
     )
 
     response = client.post(
-        "/search?top_k=3",
+        "/search?top_k=3&chat_id=10",
         files=[("files", ("frame.png", png_bytes(), "image/png"))],
     )
 
@@ -223,7 +225,7 @@ def test_search_returns_hits():
         "frames": [
             {
                 "frame_index": 0,
-                "hits": [{"ban_id": 42, "frame_index": 0, "score": 0.95}],
+                "hits": [{"ban_id": 42, "chat_id": 10, "frame_index": 0, "score": 0.95}],
             }
         ],
     }
@@ -235,7 +237,7 @@ def test_ban_requires_vector_service():
 
     response = client.post(
         "/ban",
-        data={"file_unique_id": "file-unique-id", "media_type": "photo"},
+        data={"chat_id": "10", "file_unique_id": "file-unique-id", "media_type": "photo"},
         files=[("files", ("frame.png", png_bytes(), "image/png"))],
     )
 

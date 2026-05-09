@@ -10,14 +10,16 @@ import (
 
 type fakeMatcher struct {
 	blocked []domain.Content
+	checked []domain.Content
 }
 
-func (m *fakeMatcher) Block(_ context.Context, content domain.Content) error {
+func (m *fakeMatcher) Block(_ context.Context, _ int64, content domain.Content) error {
 	m.blocked = append(m.blocked, content)
 	return nil
 }
 
-func (m *fakeMatcher) IsBlocked(_ context.Context, _ domain.Content) (bool, error) {
+func (m *fakeMatcher) IsBlocked(_ context.Context, _ int64, content domain.Content) (bool, error) {
+	m.checked = append(m.checked, content)
 	return false, nil
 }
 
@@ -140,6 +142,58 @@ func TestHandleMessageBanDoesNotBlockOrDeleteTextReply(t *testing.T) {
 	}
 	if !reflect.DeepEqual(actions.sent, wantSent) {
 		t.Fatalf("отправленные сообщения = %#v, ожидалось %#v", actions.sent, wantSent)
+	}
+}
+
+func TestHandleMessagePrivateChatSendsInfoAndSkipsModeration(t *testing.T) {
+	ctx := context.Background()
+	matcher := &fakeMatcher{}
+	actions := &fakeActions{}
+	service, err := NewService(matcher, fakeAdmins{admin: true}, actions)
+	if err != nil {
+		t.Fatalf("создание сервиса: %v", err)
+	}
+	content := domain.Content{
+		FileID:       "file-id",
+		FileUniqueID: "file-unique-id",
+		Type:         domain.MediaPhoto,
+	}
+
+	msg := domain.Message{
+		ID:       20,
+		ChatID:   100,
+		ChatType: domain.ChatPrivate,
+		SenderID: 1,
+		Command:  "ban",
+		Content:  &content,
+		ReplyTo: &domain.Message{
+			ID:      10,
+			ChatID:  100,
+			Content: &content,
+		},
+	}
+
+	if err := service.HandleMessage(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+
+	wantSent := []sentMessage{
+		{chatID: 100, text: privateChatInfo},
+	}
+	if !reflect.DeepEqual(actions.sent, wantSent) {
+		t.Fatalf("отправленные сообщения = %#v, ожидалось %#v", actions.sent, wantSent)
+	}
+
+	if len(matcher.blocked) != 0 {
+		t.Fatalf("заблокированный контент = %#v, ожидался пустой список", matcher.blocked)
+	}
+
+	if len(matcher.checked) != 0 {
+		t.Fatalf("проверенный контент = %#v, ожидался пустой список", matcher.checked)
+	}
+
+	if len(actions.deleted) != 0 {
+		t.Fatalf("удаленные сообщения = %#v, ожидался пустой список", actions.deleted)
 	}
 }
 

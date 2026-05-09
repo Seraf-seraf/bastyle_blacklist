@@ -15,7 +15,7 @@ func TestMatcherBlockSendsFramesToClient(t *testing.T) {
 	matcher := newTestMatcher(t, client)
 	content := testPhotoContent()
 
-	if err := matcher.Block(context.Background(), content); err != nil {
+	if err := matcher.Block(context.Background(), 10, content); err != nil {
 		t.Fatal(err)
 	}
 
@@ -23,6 +23,9 @@ func TestMatcherBlockSendsFramesToClient(t *testing.T) {
 		t.Fatalf("запросы бана = %d, ожидалось 1", len(client.banRequests))
 	}
 	request := client.banRequests[0]
+	if request.ChatID != 10 {
+		t.Fatalf("chat_id = %d, ожидалось 10", request.ChatID)
+	}
 	if request.FileUniqueID != content.FileUniqueID {
 		t.Fatalf("file_unique_id = %q, ожидалось %q", request.FileUniqueID, content.FileUniqueID)
 	}
@@ -47,7 +50,7 @@ func TestMatcherIsBlockedReturnsStaticMatch(t *testing.T) {
 	}
 	matcher := newTestMatcher(t, client)
 
-	blocked, err := matcher.IsBlocked(context.Background(), testPhotoContent())
+	blocked, err := matcher.IsBlocked(context.Background(), 10, testPhotoContent())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +73,7 @@ func TestMatcherIsBlockedAppliesVideoLikeRule(t *testing.T) {
 	matcher := newTestMatcher(t, client)
 	matcher.videoExtractor = fakeExtractor{frames: 3}
 
-	blocked, err := matcher.IsBlocked(context.Background(), domain.Content{
+	blocked, err := matcher.IsBlocked(context.Background(), 10, domain.Content{
 		FileID:       "animation-file-id",
 		FileUniqueID: "animation-file-unique-id",
 		Type:         domain.MediaAnimation,
@@ -90,7 +93,7 @@ func TestMatcherSkipsUnsupportedContent(t *testing.T) {
 	client := &fakeClient{}
 	matcher := newTestMatcher(t, client)
 
-	blocked, err := matcher.IsBlocked(context.Background(), domain.Content{
+	blocked, err := matcher.IsBlocked(context.Background(), 10, domain.Content{
 		FileID:       "file-id",
 		FileUniqueID: "file-unique-id",
 		Type:         domain.MediaStickerAnimated,
@@ -112,7 +115,7 @@ func TestMatcherReturnsClientError(t *testing.T) {
 	client := &fakeClient{searchErr: expectedErr}
 	matcher := newTestMatcher(t, client)
 
-	_, err := matcher.IsBlocked(context.Background(), testPhotoContent())
+	_, err := matcher.IsBlocked(context.Background(), 10, testPhotoContent())
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf("ошибка = %v, ожидалось %v", err, expectedErr)
 	}

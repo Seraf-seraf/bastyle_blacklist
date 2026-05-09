@@ -1,5 +1,4 @@
 from pathlib import Path
-import sqlite3
 
 import pytest
 
@@ -10,6 +9,7 @@ def test_sqlite_vector_store_persists_active_bans(tmp_path: Path):
     store = _new_store(tmp_path)
 
     ban_id = store.insert_ban(
+        chat_id=10,
         file_unique_id="file-unique-id",
         media_type="animation",
         model_name="test-model",
@@ -29,6 +29,7 @@ def test_sqlite_vector_store_persists_active_bans(tmp_path: Path):
 
     assert len(bans) == 1
     assert bans[0].id == ban_id
+    assert bans[0].chat_id == 10
     assert bans[0].file_unique_id == "file-unique-id"
     assert bans[0].media_type == "animation"
     assert bans[0].model_name == "test-model"
@@ -47,6 +48,7 @@ def test_sqlite_vector_store_loads_after_reopen(tmp_path: Path):
     db_path = tmp_path / "vectors.sqlite"
     first = SQLiteVectorStore(db_path)
     first.insert_ban(
+        chat_id=10,
         file_unique_id="file-unique-id",
         media_type="photo",
         model_name="test-model",
@@ -71,6 +73,7 @@ def test_sqlite_vector_store_loads_after_reopen(tmp_path: Path):
 def test_sqlite_vector_store_deactivates_ban(tmp_path: Path):
     store = _new_store(tmp_path)
     ban_id = store.insert_ban(
+        chat_id=10,
         file_unique_id="file-unique-id",
         media_type="photo",
         model_name="test-model",
@@ -101,6 +104,7 @@ def test_sqlite_vector_store_deactivates_ban(tmp_path: Path):
 def test_sqlite_vector_store_filters_by_model_revision_and_dimension(tmp_path: Path):
     store = _new_store(tmp_path)
     store.insert_ban(
+        chat_id=10,
         file_unique_id="first-file",
         media_type="photo",
         model_name="test-model",
@@ -109,6 +113,7 @@ def test_sqlite_vector_store_filters_by_model_revision_and_dimension(tmp_path: P
         frames=[VectorFrame(frame_index=0, position_millis=0, vector=[1.0, 0.0])],
     )
     store.insert_ban(
+        chat_id=10,
         file_unique_id="second-file",
         media_type="photo",
         model_name="test-model",
@@ -125,6 +130,44 @@ def test_sqlite_vector_store_filters_by_model_revision_and_dimension(tmp_path: P
 
     assert len(bans) == 1
     assert bans[0].file_unique_id == "first-file"
+
+
+def test_sqlite_vector_store_filters_by_chat_id(tmp_path: Path):
+    store = _new_store(tmp_path)
+    store.insert_ban(
+        chat_id=10,
+        file_unique_id="first-file",
+        media_type="photo",
+        model_name="test-model",
+        model_revision="current",
+        vector_dim=2,
+        frames=[VectorFrame(frame_index=0, position_millis=0, vector=[1.0, 0.0])],
+    )
+    store.insert_ban(
+        chat_id=20,
+        file_unique_id="second-file",
+        media_type="photo",
+        model_name="test-model",
+        model_revision="current",
+        vector_dim=2,
+        frames=[VectorFrame(frame_index=0, position_millis=0, vector=[0.0, 1.0])],
+    )
+
+    bans = store.load_active_bans(
+        chat_id=10,
+        model_name="test-model",
+        model_revision="current",
+        vector_dim=2,
+    )
+
+    assert len(bans) == 1
+    assert bans[0].file_unique_id == "first-file"
+    assert store.active_vectors_count(
+        chat_id=10,
+        model_name="test-model",
+        model_revision="current",
+        vector_dim=2,
+    ) == 1
 
 
 def test_sqlite_vector_store_saves_index_state(tmp_path: Path):
@@ -172,51 +215,12 @@ def test_sqlite_vector_store_saves_index_state(tmp_path: Path):
     ) == updated
 
 
-def test_sqlite_vector_store_migrates_index_state_integrity_columns(tmp_path: Path):
-    db_path = tmp_path / "vectors.sqlite"
-    with sqlite3.connect(db_path) as db:
-        db.executescript(
-            """
-CREATE TABLE ai_vector_index_state (
-    model_name TEXT NOT NULL,
-    model_revision TEXT NOT NULL,
-    vector_dim INTEGER NOT NULL,
-    index_type TEXT NOT NULL,
-    index_path TEXT NOT NULL,
-    active_vectors_count INTEGER NOT NULL,
-    rebuilt_at TEXT NOT NULL,
-    PRIMARY KEY (model_name, model_revision, vector_dim, index_type)
-);
-
-INSERT INTO ai_vector_index_state (
-    model_name, model_revision, vector_dim, index_type, index_path,
-    active_vectors_count, rebuilt_at
-)
-VALUES (
-    'test-model', 'test-revision', 3, 'hnsw-flat-ip',
-    '/var/lib/bastyle/faiss-image.index', 10, '2026-05-08T10:00:00Z'
-);
-"""
-        )
-
-    store = SQLiteVectorStore(db_path)
-    state = store.load_index_state(
-        model_name="test-model",
-        model_revision="test-revision",
-        vector_dim=3,
-        index_type="hnsw-flat-ip",
-    )
-
-    assert state is not None
-    assert state.active_vectors_hash == ""
-    assert state.index_file_sha256 == ""
-
-
 def test_sqlite_vector_store_rejects_invalid_vectors(tmp_path: Path):
     store = _new_store(tmp_path)
 
     with pytest.raises(ValueError, match="размерность вектора не совпадает"):
         store.insert_ban(
+            chat_id=10,
             file_unique_id="file-unique-id",
             media_type="photo",
             model_name="test-model",

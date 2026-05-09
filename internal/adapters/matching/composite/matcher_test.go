@@ -9,11 +9,11 @@ import (
 
 type fakeMatcher struct{}
 
-func (fakeMatcher) Block(context.Context, domain.Content) error {
+func (fakeMatcher) Block(context.Context, int64, domain.Content) error {
 	return nil
 }
 
-func (fakeMatcher) IsBlocked(context.Context, domain.Content) (bool, error) {
+func (fakeMatcher) IsBlocked(context.Context, int64, domain.Content) (bool, error) {
 	return false, nil
 }
 

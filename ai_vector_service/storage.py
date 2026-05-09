@@ -24,6 +24,7 @@ class StoredVectorFrame:
 @dataclass(frozen=True)
 class VectorBan:
     id: int
+    chat_id: int
     file_unique_id: str
     media_type: str
     model_name: str
@@ -63,6 +64,7 @@ class SQLiteVectorStore:
     def insert_ban(
         self,
         *,
+        chat_id: int,
         file_unique_id: str,
         media_type: str,
         model_name: str,
@@ -70,17 +72,17 @@ class SQLiteVectorStore:
         vector_dim: int,
         frames: list[VectorFrame],
     ) -> int:
-        self._validate_ban(file_unique_id, media_type, model_name, model_revision, vector_dim, frames)
+        self._validate_ban(chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames)
 
         with self._db:
             cursor = self._db.execute(
                 """
 INSERT INTO ai_vector_ban (
-    file_unique_id, media_type, model_name, model_revision, vector_dim, frames_count, active
+    chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames_count, active
 )
-VALUES (?, ?, ?, ?, ?, ?, 1)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1)
 """,
-                (file_unique_id, media_type, model_name, model_revision, vector_dim, len(frames)),
+                (chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, len(frames)),
             )
             ban_id = int(cursor.lastrowid)
 
@@ -105,12 +107,16 @@ VALUES (?, ?, ?, ?)
     def load_active_bans(
         self,
         *,
+        chat_id: int | None = None,
         model_name: str | None = None,
         model_revision: str | None = None,
         vector_dim: int | None = None,
     ) -> list[VectorBan]:
         clauses = ["b.active = 1"]
         params: list[object] = []
+        if chat_id is not None:
+            clauses.append("b.chat_id = ?")
+            params.append(chat_id)
         if model_name is not None:
             clauses.append("b.model_name = ?")
             params.append(model_name)
@@ -123,7 +129,7 @@ VALUES (?, ?, ?, ?)
 
         rows = self._db.execute(
             f"""
-SELECT b.id AS ban_id, b.file_unique_id, b.media_type, b.model_name, b.model_revision,
+SELECT b.id AS ban_id, b.chat_id, b.file_unique_id, b.media_type, b.model_name, b.model_revision,
        b.vector_dim, b.frames_count, b.active, b.created_at,
        f.id AS frame_id, f.frame_index, f.position_millis, f.vector_blob
 FROM ai_vector_ban b
@@ -152,21 +158,29 @@ WHERE id = ? AND active = 1
     def active_vectors_count(
         self,
         *,
+        chat_id: int | None = None,
         model_name: str,
         model_revision: str,
         vector_dim: int,
     ) -> int:
+        clauses = [
+            "b.active = 1",
+            "b.model_name = ?",
+            "b.model_revision = ?",
+            "b.vector_dim = ?",
+        ]
+        params: list[object] = [model_name, model_revision, vector_dim]
+        if chat_id is not None:
+            clauses.append("b.chat_id = ?")
+            params.append(chat_id)
+
         row = self._db.execute(
             """
 SELECT COUNT(*) AS count
 FROM ai_vector_frame f
 JOIN ai_vector_ban b ON b.id = f.ban_id
-WHERE b.active = 1
-  AND b.model_name = ?
-  AND b.model_revision = ?
-  AND b.vector_dim = ?
-""",
-            (model_name, model_revision, vector_dim),
+WHERE """ + " AND ".join(clauses),
+            params,
         ).fetchone()
 
         return int(row["count"])
@@ -242,6 +256,7 @@ PRAGMA busy_timeout = 5000;
 
 CREATE TABLE IF NOT EXISTS ai_vector_ban (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL DEFAULT 0,
     file_unique_id TEXT NOT NULL,
     media_type TEXT NOT NULL,
     model_name TEXT NOT NULL,
@@ -279,29 +294,17 @@ CREATE TABLE IF NOT EXISTS ai_vector_index_state (
 CREATE INDEX IF NOT EXISTS ai_vector_ban_active_model_idx
 ON ai_vector_ban(active, model_name, model_revision, vector_dim);
 
+CREATE INDEX IF NOT EXISTS ai_vector_ban_chat_active_model_idx
+ON ai_vector_ban(chat_id, active, model_name, model_revision, vector_dim);
+
 CREATE INDEX IF NOT EXISTS ai_vector_frame_ban_idx
 ON ai_vector_frame(ban_id, frame_index);
 """
         )
-        self._ensure_index_state_columns()
-
-    def _ensure_index_state_columns(self) -> None:
-        rows = self._db.execute("PRAGMA table_info(ai_vector_index_state)").fetchall()
-        columns = {str(row["name"]) for row in rows}
-
-        if "active_vectors_hash" not in columns:
-            self._db.execute(
-                "ALTER TABLE ai_vector_index_state "
-                "ADD COLUMN active_vectors_hash TEXT NOT NULL DEFAULT ''"
-            )
-        if "index_file_sha256" not in columns:
-            self._db.execute(
-                "ALTER TABLE ai_vector_index_state "
-                "ADD COLUMN index_file_sha256 TEXT NOT NULL DEFAULT ''"
-            )
 
     def _validate_ban(
         self,
+        chat_id: int,
         file_unique_id: str,
         media_type: str,
         model_name: str,
@@ -309,6 +312,8 @@ ON ai_vector_frame(ban_id, frame_index);
         vector_dim: int,
         frames: list[VectorFrame],
     ) -> None:
+        if not isinstance(chat_id, int):
+            raise ValueError("chat_id должен быть целым числом")
         if not file_unique_id:
             raise ValueError("file_unique_id пустой")
         if not media_type:
@@ -344,6 +349,7 @@ def _rows_to_bans(rows: list[sqlite3.Row]) -> list[VectorBan]:
         if ban is None:
             ban = VectorBan(
                 id=ban_id,
+                chat_id=int(row["chat_id"]),
                 file_unique_id=str(row["file_unique_id"]),
                 media_type=str(row["media_type"]),
                 model_name=str(row["model_name"]),

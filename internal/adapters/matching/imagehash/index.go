@@ -17,6 +17,7 @@ const hashVersion = "goimagehash-phash-64-rot4-v1"
 // туда четыре значения: оригинал и повороты 90, 180, 270 градусов.
 type StoredImageHash struct {
 	ID           int64
+	ChatID       int64
 	FileUniqueID string
 	MediaType    domain.MediaType
 	Hashes       []uint64
@@ -43,16 +44,16 @@ func NewLinearIndex(buffer int) *LinearIndex {
 
 // Add добавляет одну заблокированную картинку в индекс.
 //
-// Дубликатом считается запись с теми же значениями Hashes в том же порядке.
+// Дубликатом считается запись в том же чате с теми же значениями Hashes в том же порядке.
 // FileUniqueID здесь не используется: одна и та же картинка может прийти с
 // другим Telegram id, но с теми же perceptual hashes.
 func (i *LinearIndex) Add(hash StoredImageHash) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	signature := hashSignature(hash.Hashes)
+	signature := imageHashIndexSignature(hash)
 	for _, existing := range i.hashes {
-		if hashSignature(existing.Hashes) == signature {
+		if imageHashIndexSignature(existing) == signature {
 			return
 		}
 	}
@@ -70,11 +71,11 @@ func (i *LinearIndex) AddMany(hashes []StoredImageHash) {
 
 	seen := make(map[string]struct{}, len(i.hashes)+len(hashes))
 	for _, existing := range i.hashes {
-		seen[hashSignature(existing.Hashes)] = struct{}{}
+		seen[imageHashIndexSignature(existing)] = struct{}{}
 	}
 
 	for _, hash := range hashes {
-		signature := hashSignature(hash.Hashes)
+		signature := imageHashIndexSignature(hash)
 		if _, ok := seen[signature]; ok {
 			continue
 		}
@@ -90,11 +91,14 @@ func (i *LinearIndex) AddMany(hashes []StoredImageHash) {
 // Это exact radius search по Hamming distance. Алгоритмически это O(N * Q * S),
 // где N — количество stored items, Q — количество query variants, S —
 // количество stored variants. Сейчас Q и S обычно равны 4.
-func (i *LinearIndex) Search(query []uint64, threshold int) bool {
+func (i *LinearIndex) Search(chatID int64, query []uint64, threshold int) bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	for _, stored := range i.hashes {
+		if stored.ChatID != chatID {
+			continue
+		}
 		if withinThreshold(query, stored.Hashes, threshold) {
 			return true
 		}
@@ -128,4 +132,8 @@ func hashSignature(hashes []uint64) string {
 	}
 
 	return strings.Join(parts, "|")
+}
+
+func imageHashIndexSignature(hash StoredImageHash) string {
+	return strconv.FormatInt(hash.ChatID, 10) + "|" + hashSignature(hash.Hashes)
 }

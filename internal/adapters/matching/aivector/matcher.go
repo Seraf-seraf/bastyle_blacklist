@@ -70,7 +70,7 @@ func NewMatcher(options Options) (*Matcher, error) {
 	}, nil
 }
 
-func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
+func (m *Matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
 	const methodCtx = "aivector/Matcher.Block"
 
 	frames, supported, err := m.framesForContent(ctx, content)
@@ -82,6 +82,7 @@ func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
 	}
 
 	_, err = m.client.Ban(ctx, BanRequest{
+		ChatID:       chatID,
 		FileUniqueID: content.FileUniqueID,
 		MediaType:    string(content.Type),
 		Frames:       frames,
@@ -89,7 +90,7 @@ func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
 	return apperrors.Wrap(methodCtx, err)
 }
 
-func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+func (m *Matcher) IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error) {
 	const methodCtx = "aivector/Matcher.IsBlocked"
 
 	frames, supported, err := m.framesForContent(ctx, content)
@@ -101,6 +102,7 @@ func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 	}
 
 	response, err := m.client.Search(ctx, SearchRequest{
+		ChatID: chatID,
 		TopK:   m.topK,
 		Frames: frames,
 	})

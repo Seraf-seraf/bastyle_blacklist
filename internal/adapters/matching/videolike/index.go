@@ -3,6 +3,7 @@ package videolike
 import (
 	"math"
 	"math/bits"
+	"strconv"
 	"sync"
 )
 
@@ -75,11 +76,14 @@ func (i *LinearIndex) AddMany(hashes []StoredVideoLikeHash) {
 	}
 }
 
-func (i *LinearIndex) Search(query StoredVideoLikeHash, threshold int) (SearchResult, bool) {
+func (i *LinearIndex) Search(chatID int64, query StoredVideoLikeHash, threshold int) (SearchResult, bool) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	for _, stored := range i.hashes {
+		if stored.ChatID != chatID {
+			continue
+		}
 		result, matched := matchStoredVideoLikeFingerprint(query, stored, threshold, i.rule)
 		if matched {
 			return result, true
@@ -145,5 +149,5 @@ func hasMatchingFrame(query StoredVideoLikeFrameHash, stored []StoredVideoLikeFr
 }
 
 func videoLikeIndexSignature(hash StoredVideoLikeHash) string {
-	return hash.HashVersion + "|" + videoLikeHashSignature(hash.Frames)
+	return strconv.FormatInt(hash.ChatID, 10) + "|" + hash.HashVersion + "|" + videoLikeHashSignature(hash.Frames)
 }

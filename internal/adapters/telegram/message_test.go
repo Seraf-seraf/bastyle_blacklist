@@ -121,10 +121,22 @@ func TestMessageFromTelegramParsesBotCommand(t *testing.T) {
 	}
 }
 
+func TestMessageFromTelegramMapsChatType(t *testing.T) {
+	msg := mustTelegramMessage(t, `{
+		"message_id": 1,
+		"chat": {"id": 10, "type": "private"}
+	}`)
+
+	message := MessageFromTelegram(msg)
+	if message.ChatType != domain.ChatPrivate {
+		t.Fatalf("тип чата = %q, ожидалось %q", message.ChatType, domain.ChatPrivate)
+	}
+}
+
 func TestMessageFromTelegramUsesParentChatForReplyWithoutChat(t *testing.T) {
 	msg := mustTelegramMessage(t, `{
 		"message_id": 2,
-		"chat": {"id": 10},
+		"chat": {"id": 10, "type": "supergroup"},
 		"text": "/ban",
 		"entities": [{"offset": 0, "length": 4, "type": "bot_command"}],
 		"reply_to_message": {
@@ -148,6 +160,9 @@ func TestMessageFromTelegramUsesParentChatForReplyWithoutChat(t *testing.T) {
 	}
 	if message.ReplyTo.ChatID != 10 {
 		t.Fatalf("chat_id ответа = %d, ожидалось 10", message.ReplyTo.ChatID)
+	}
+	if message.ReplyTo.ChatType != domain.ChatSupergroup {
+		t.Fatalf("тип чата ответа = %q, ожидалось %q", message.ReplyTo.ChatType, domain.ChatSupergroup)
 	}
 }
 

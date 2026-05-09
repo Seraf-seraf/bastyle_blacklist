@@ -51,11 +51,11 @@ func TestMatcherBlocksSameWhiteImageBackgroundWithDifferentFileID(t *testing.T) 
 		},
 	}, 8, 2)
 
-	if err := matcher.Block(ctx, blockedContent); err != nil {
+	if err := matcher.Block(ctx, 10, blockedContent); err != nil {
 		t.Fatalf("блокировка белого изображения: %v", err)
 	}
 
-	blocked, err := matcher.IsBlocked(ctx, candidateContent)
+	blocked, err := matcher.IsBlocked(ctx, 10, candidateContent)
 	if err != nil {
 		t.Fatalf("проверка белого изображения-кандидата: %v", err)
 	}
@@ -88,11 +88,11 @@ func TestMatcherBlocksRotatedImageWithPerceptionHashVariants(t *testing.T) {
 		},
 	}, 8, 2)
 
-	if err := matcher.Block(ctx, blockedContent); err != nil {
+	if err := matcher.Block(ctx, 10, blockedContent); err != nil {
 		t.Fatalf("блокировка изображения: %v", err)
 	}
 
-	blocked, err := matcher.IsBlocked(ctx, candidateContent)
+	blocked, err := matcher.IsBlocked(ctx, 10, candidateContent)
 	if err != nil {
 		t.Fatalf("проверка повернутого изображения-кандидата: %v", err)
 	}

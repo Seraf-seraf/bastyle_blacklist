@@ -22,7 +22,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if index.Search(query, 8) {
+				if index.Search(10, query, 8) {
 					b.Fatal("ожидалось: отсутствие совпадения")
 				}
 			}
@@ -37,6 +37,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 				0x4444_5555_6666_7777,
 			}
 			index.Add(StoredImageHash{
+				ChatID:       10,
 				FileUniqueID: "matching-item",
 				MediaType:    domain.MediaPhoto,
 				Hashes:       append([]uint64(nil), query...),
@@ -46,7 +47,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if !index.Search(query, 8) {
+				if !index.Search(10, query, 8) {
 					b.Fatal("ожидалось: совпадение")
 				}
 			}
@@ -61,6 +62,7 @@ func benchmarkIndex(size int) *LinearIndex {
 	for i := 0; i < size; i++ {
 		base := splitmix64(uint64(i + 1))
 		hashes = append(hashes, StoredImageHash{
+			ChatID:       10,
 			FileUniqueID: strconv.Itoa(i),
 			MediaType:    domain.MediaPhoto,
 			Hashes: []uint64{

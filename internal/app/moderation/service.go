@@ -8,6 +8,8 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
+const privateChatInfo = "Bastyle Blacklist — бот для модерации медиа в групповых чатах.\nИсходники: https://github.com/Seraf-seraf/bastyle_blacklist"
+
 type service struct {
 	contentMatcher ports.ContentMatcher
 	admins         ports.AdminChecker
@@ -41,6 +43,13 @@ func NewService(
 func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 	const methodCtx = "moderation/service.HandleMessage"
 
+	if msg.IsPrivateChat() {
+		if err := s.actions.SendMessage(msg.ChatID, privateChatInfo); err != nil {
+			return apperrors.Wrap(methodCtx, err)
+		}
+		return nil
+	}
+
 	if msg.IsCommand() {
 
 		switch msg.Command {
@@ -67,7 +76,7 @@ func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 				return nil
 			}
 
-			if err := s.contentMatcher.Block(ctx, *target.Content); err != nil {
+			if err := s.contentMatcher.Block(ctx, target.ChatID, *target.Content); err != nil {
 				return apperrors.Wrap(methodCtx, err)
 			}
 
@@ -96,7 +105,7 @@ func (s *service) HandleMessage(ctx context.Context, msg domain.Message) error {
 			continue
 		}
 
-		blocked, err := s.contentMatcher.IsBlocked(ctx, *target.Content)
+		blocked, err := s.contentMatcher.IsBlocked(ctx, target.ChatID, *target.Content)
 		if err != nil {
 			return apperrors.Wrap(methodCtx, err)
 		}

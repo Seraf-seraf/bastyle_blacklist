@@ -6,19 +6,22 @@ import (
 )
 
 func MessageFromTelegram(msg *tgbotapi.Message) domain.Message {
-	return messageFromTelegram(msg, 0)
+	return messageFromTelegram(msg, 0, "")
 }
 
-func messageFromTelegram(msg *tgbotapi.Message, fallbackChatID int64) domain.Message {
+func messageFromTelegram(msg *tgbotapi.Message, fallbackChatID int64, fallbackChatType domain.ChatType) domain.Message {
 	content := contentFromTelegram(msg)
 	chatID := fallbackChatID
+	chatType := fallbackChatType
 	if msg.Chat != nil {
 		chatID = msg.Chat.ID
+		chatType = domain.ChatType(msg.Chat.Type)
 	}
 
 	message := domain.Message{
 		ID:           msg.MessageID,
 		ChatID:       chatID,
+		ChatType:     chatType,
 		Command:      msg.Command(),
 		FileUniqueID: content.FileUniqueID,
 	}
@@ -32,7 +35,7 @@ func messageFromTelegram(msg *tgbotapi.Message, fallbackChatID int64) domain.Mes
 	}
 
 	if msg.ReplyToMessage != nil {
-		reply := messageFromTelegram(msg.ReplyToMessage, chatID)
+		reply := messageFromTelegram(msg.ReplyToMessage, chatID, chatType)
 		message.ReplyTo = &reply
 	}
 

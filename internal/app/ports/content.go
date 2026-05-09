@@ -7,8 +7,8 @@ import (
 )
 
 type ContentMatcher interface {
-	Block(ctx context.Context, content domain.Content) error
-	IsBlocked(ctx context.Context, content domain.Content) (bool, error)
+	Block(ctx context.Context, chatID int64, content domain.Content) error
+	IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error)
 }
 
 type MediaDownloader interface {

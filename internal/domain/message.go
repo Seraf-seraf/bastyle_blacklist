@@ -9,6 +9,15 @@ const (
 	MediaStickerAnimated MediaType = "sticker_animated"
 )
 
+type ChatType string
+
+const (
+	ChatPrivate    ChatType = "private"
+	ChatGroup      ChatType = "group"
+	ChatSupergroup ChatType = "supergroup"
+	ChatChannel    ChatType = "channel"
+)
+
 type Content struct {
 	FileID       string
 	FileUniqueID string
@@ -23,6 +32,7 @@ type Content struct {
 type Message struct {
 	ID           int
 	ChatID       int64
+	ChatType     ChatType
 	SenderID     int64
 	Command      string
 	FileUniqueID string
@@ -32,6 +42,10 @@ type Message struct {
 
 func (m Message) IsCommand() bool {
 	return m.Command != ""
+}
+
+func (m Message) IsPrivateChat() bool {
+	return m.ChatType == ChatPrivate
 }
 
 func (c Content) IsZero() bool {

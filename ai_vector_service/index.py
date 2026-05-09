@@ -22,6 +22,7 @@ class HNSWConfig:
 @dataclass(frozen=True)
 class VectorSearchHit:
     ban_id: int
+    chat_id: int
     frame_index: int
     score: float
 
@@ -29,6 +30,7 @@ class VectorSearchHit:
 @dataclass(frozen=True)
 class IndexedVectorRef:
     ban_id: int
+    chat_id: int
     frame_index: int
 
 
@@ -50,6 +52,7 @@ class FaissHNSWVectorIndex:
         self._validate_config(self._config)
         self._index = index or self._new_index()
         self._refs = refs or []
+        self._ids_by_chat = _refs_to_ids_by_chat(self._refs)
         self._lock = threading.RLock()
 
         if self._index.d != dimension:
@@ -165,17 +168,26 @@ class FaissHNSWVectorIndex:
                 raise ValueError("размерность вектора бана не совпадает")
             for frame in ban.frames:
                 vectors.append(frame.vector)
-                refs.append(IndexedVectorRef(ban_id=ban.id, frame_index=frame.frame_index))
+                refs.append(
+                    IndexedVectorRef(
+                        ban_id=ban.id,
+                        chat_id=ban.chat_id,
+                        frame_index=frame.frame_index,
+                    )
+                )
 
         if not vectors:
             return
 
         matrix = _normalize_vectors(vectors, self._dimension)
         with self._lock:
+            start_id = int(self._index.ntotal)
             self._index.add(matrix)
             self._refs.extend(refs)
+            for offset, ref in enumerate(refs):
+                self._ids_by_chat.setdefault(ref.chat_id, []).append(start_id + offset)
 
-    def search(self, vector: list[float], top_k: int) -> list[VectorSearchHit]:
+    def search(self, vector: list[float], top_k: int, chat_id: int | None = None) -> list[VectorSearchHit]:
         if top_k <= 0:
             raise ValueError("top_k должен быть положительным")
 
@@ -184,21 +196,43 @@ class FaissHNSWVectorIndex:
             if self._index.ntotal == 0:
                 return []
 
-            scores, indices = self._index.search(query, top_k)
+            params = None
+            search_k = top_k
+            if chat_id is not None:
+                index_ids = self._ids_by_chat.get(chat_id, [])
+                if not index_ids:
+                    return []
+
+                search_k = min(top_k, len(index_ids))
+                params = self._search_params_for_ids(index_ids)
+
+            scores, indices = self._index.search(query, search_k, params=params)
             hits: list[VectorSearchHit] = []
             for score, index_id in zip(scores[0], indices[0]):
                 if index_id < 0:
                     continue
                 ref = self._refs[int(index_id)]
+                if chat_id is not None and ref.chat_id != chat_id:
+                    continue
                 hits.append(
                     VectorSearchHit(
                         ban_id=ref.ban_id,
+                        chat_id=ref.chat_id,
                         frame_index=ref.frame_index,
                         score=float(score),
                     )
                 )
+                if len(hits) >= top_k:
+                    break
 
         return hits
+
+    def _search_params_for_ids(self, index_ids: list[int]):
+        ids = np.asarray(index_ids, dtype=np.int64)
+        params = self._faiss.SearchParametersHNSW()
+        params.efSearch = self._config.ef_search
+        params.sel = self._faiss.IDSelectorBatch(ids)
+        return params
 
     def save(
         self,
@@ -264,8 +298,21 @@ def _bans_to_refs(bans: list[VectorBan]) -> list[IndexedVectorRef]:
     refs: list[IndexedVectorRef] = []
     for ban in bans:
         for frame in ban.frames:
-            refs.append(IndexedVectorRef(ban_id=ban.id, frame_index=frame.frame_index))
+            refs.append(
+                IndexedVectorRef(
+                    ban_id=ban.id,
+                    chat_id=ban.chat_id,
+                    frame_index=frame.frame_index,
+                )
+            )
     return refs
+
+
+def _refs_to_ids_by_chat(refs: list[IndexedVectorRef]) -> dict[int, list[int]]:
+    ids_by_chat: dict[int, list[int]] = {}
+    for index_id, ref in enumerate(refs):
+        ids_by_chat.setdefault(ref.chat_id, []).append(index_id)
+    return ids_by_chat
 
 
 def _state_matches(
@@ -287,6 +334,7 @@ def _active_vectors_hash(bans: list[VectorBan]) -> str:
     digest = hashlib.sha256()
     for ban in bans:
         _hash_int(digest, ban.id)
+        _hash_int(digest, ban.chat_id)
         _hash_text(digest, ban.file_unique_id)
         _hash_text(digest, ban.media_type)
         _hash_text(digest, ban.model_name)

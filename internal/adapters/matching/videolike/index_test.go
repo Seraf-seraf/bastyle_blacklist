@@ -21,7 +21,7 @@ func TestLinearIndexSearchReturnsMatchedFrameCountAndRatio(t *testing.T) {
 		},
 	})
 
-	result, matched := index.Search(StoredVideoLikeHash{
+	result, matched := index.Search(0, StoredVideoLikeHash{
 		HashVersion: videoLikeHashVersion,
 		Frames: []StoredVideoLikeFrameHash{
 			{FrameIndex: 0, PositionMillis: 0, Hash: 0x1111},
@@ -44,6 +44,26 @@ func TestLinearIndexSearchReturnsMatchedFrameCountAndRatio(t *testing.T) {
 	}
 }
 
+func TestLinearIndexSearchScopesHashesByChat(t *testing.T) {
+	index := NewLinearIndex(1, DefaultMatchRule())
+	hash := StoredVideoLikeHash{
+		ChatID:      10,
+		HashVersion: videoLikeHashVersion,
+		Frames: []StoredVideoLikeFrameHash{
+			{FrameIndex: 0, PositionMillis: 0, Hash: 0x1111},
+			{FrameIndex: 1, PositionMillis: 1000, Hash: 0x2222},
+		},
+	}
+	index.Add(hash)
+
+	if _, matched := index.Search(10, hash, 0); !matched {
+		t.Fatal("ожидалось: fingerprint находится в исходном чате")
+	}
+	if _, matched := index.Search(20, hash, 0); matched {
+		t.Fatal("не ожидалось: fingerprint находится в другом чате")
+	}
+}
+
 func TestLinearIndexSearchRejectsOneMatchingFrame(t *testing.T) {
 	index := NewLinearIndex(1, DefaultMatchRule())
 	index.Add(StoredVideoLikeHash{
@@ -56,7 +76,7 @@ func TestLinearIndexSearchRejectsOneMatchingFrame(t *testing.T) {
 		},
 	})
 
-	_, matched := index.Search(StoredVideoLikeHash{
+	_, matched := index.Search(0, StoredVideoLikeHash{
 		HashVersion: videoLikeHashVersion,
 		Frames: []StoredVideoLikeFrameHash{
 			{FrameIndex: 0, PositionMillis: 0, Hash: 0x1111},
@@ -85,7 +105,7 @@ func TestLinearIndexSearchRejectsBelowRatio(t *testing.T) {
 		},
 	})
 
-	_, matched := index.Search(StoredVideoLikeHash{
+	_, matched := index.Search(0, StoredVideoLikeHash{
 		HashVersion: videoLikeHashVersion,
 		Frames: []StoredVideoLikeFrameHash{
 			{FrameIndex: 0, PositionMillis: 0, Hash: 0x1111},
@@ -109,7 +129,7 @@ func TestLinearIndexSearchRejectsHashVersionMismatch(t *testing.T) {
 		},
 	})
 
-	_, matched := index.Search(StoredVideoLikeHash{
+	_, matched := index.Search(0, StoredVideoLikeHash{
 		HashVersion: videoLikeHashVersion,
 		Frames: []StoredVideoLikeFrameHash{
 			{FrameIndex: 0, PositionMillis: 0, Hash: 0x1111},
@@ -134,7 +154,7 @@ func TestLinearIndexAddManyDeduplicatesHashes(t *testing.T) {
 
 	index.AddMany([]StoredVideoLikeHash{hash, hash})
 
-	result, matched := index.Search(hash, 0)
+	result, matched := index.Search(0, hash, 0)
 	if !matched {
 		t.Fatal("ожидалось: дедуплицированный хеш должен находиться поиском")
 	}
@@ -159,7 +179,7 @@ func TestLinearIndexKeepsSameFrameSignatureForDifferentHashVersions(t *testing.T
 
 	index.AddMany([]StoredVideoLikeHash{hash, otherVersion})
 
-	result, matched := index.Search(otherVersion, 0)
+	result, matched := index.Search(0, otherVersion, 0)
 	if !matched {
 		t.Fatal("ожидалось: хеш другой версии должен находиться поиском")
 	}
@@ -178,7 +198,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if _, matched := index.Search(query, 8); matched {
+				if _, matched := index.Search(0, query, 8); matched {
 					b.Fatal("ожидалось: отсутствие совпадения")
 				}
 			}
@@ -193,7 +213,7 @@ func BenchmarkLinearIndexSearch(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if _, matched := index.Search(query, 8); !matched {
+				if _, matched := index.Search(0, query, 8); !matched {
 					b.Fatal("ожидалось: совпадение")
 				}
 			}
@@ -218,7 +238,7 @@ func BenchmarkVideoLikeLinearIndexSearch(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if _, matched := index.Search(query, 8); matched {
+				if _, matched := index.Search(0, query, 8); matched {
 					b.Fatal("ожидалось: отсутствие совпадения")
 				}
 			}

@@ -22,6 +22,7 @@ type Client interface {
 }
 
 type BanRequest struct {
+	ChatID       int64
 	FileUniqueID string
 	MediaType    string
 	Frames       []FrameFile
@@ -32,6 +33,7 @@ type BanResponse struct {
 }
 
 type SearchRequest struct {
+	ChatID int64
 	TopK   int
 	Frames []FrameFile
 }
@@ -93,6 +95,7 @@ func (c *HTTPClient) Ban(ctx context.Context, request BanRequest) (BanResponse, 
 	const methodCtx = "aivector/HTTPClient.Ban"
 
 	fields := map[string]string{
+		"chat_id":        strconv.FormatInt(request.ChatID, 10),
 		"file_unique_id": request.FileUniqueID,
 		"media_type":     request.MediaType,
 	}
@@ -117,7 +120,7 @@ func (c *HTTPClient) Search(ctx context.Context, request SearchRequest) (SearchR
 		return SearchResponse{}, apperrors.New(methodCtx, "AI-vector top_k должен быть положительным")
 	}
 
-	endpoint := c.baseURL + "/search?top_k=" + strconv.Itoa(request.TopK)
+	endpoint := c.baseURL + "/search?top_k=" + strconv.Itoa(request.TopK) + "&chat_id=" + strconv.FormatInt(request.ChatID, 10)
 	httpRequest, err := newMultipartRequest(ctx, http.MethodPost, endpoint, nil, request.Frames)
 	if err != nil {
 		return SearchResponse{}, apperrors.Wrap(methodCtx, err)

@@ -147,7 +147,7 @@ func (m *matcher) Close() error {
 	return apperrors.Wrap(methodCtx, m.store.close())
 }
 
-func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+func (m *matcher) IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error) {
 	const methodCtx = "videolike/matcher.IsBlocked"
 
 	media, supported, err := m.mediaForContent(ctx, content)
@@ -163,11 +163,11 @@ func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 		return false, apperrors.Wrap(methodCtx, err)
 	}
 
-	_, matched := m.index.Search(fingerprint, m.threshold)
+	_, matched := m.index.Search(chatID, fingerprint, m.threshold)
 	return matched, nil
 }
 
-func (m *matcher) Block(ctx context.Context, content domain.Content) error {
+func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
 	const methodCtx = "videolike/matcher.Block"
 
 	media, supported, err := m.mediaForContent(ctx, content)
@@ -185,6 +185,7 @@ func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 	if err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
+	fingerprint.ChatID = chatID
 
 	id, err := m.store.insert(ctx, fingerprint)
 	if err != nil {

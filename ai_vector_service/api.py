@@ -33,6 +33,7 @@ class BanResponse(BaseModel):
 
 class VectorSearchHitResponse(BaseModel):
     ban_id: int = Field(gt=0)
+    chat_id: int
     frame_index: int = Field(ge=0)
     score: float
 
@@ -83,6 +84,7 @@ class VectorIndexService:
     def add_ban(
         self,
         *,
+        chat_id: int,
         file_unique_id: str,
         media_type: str,
         frames: list[FrameEmbedding],
@@ -99,6 +101,7 @@ class VectorIndexService:
             try:
                 ban_id = self._store.insert_ban(
                     file_unique_id=file_unique_id,
+                    chat_id=chat_id,
                     media_type=media_type,
                     model_name=self._model_name,
                     model_revision=self._model_revision,
@@ -115,6 +118,7 @@ class VectorIndexService:
                 ban = next(
                     ban
                     for ban in self._store.load_active_bans(
+                        chat_id=chat_id,
                         model_name=self._model_name,
                         model_revision=self._model_revision,
                         vector_dim=dimension,
@@ -137,7 +141,7 @@ class VectorIndexService:
 
             return ban_id
 
-    def search(self, *, frames: list[FrameEmbedding], dimension: int, top_k: int) -> list[FrameSearchResponse]:
+    def search(self, *, chat_id: int, frames: list[FrameEmbedding], dimension: int, top_k: int) -> list[FrameSearchResponse]:
         if top_k <= 0:
             raise ValueError("top_k должен быть положительным")
 
@@ -149,10 +153,11 @@ class VectorIndexService:
                     hits=[
                         VectorSearchHitResponse(
                             ban_id=hit.ban_id,
+                            chat_id=hit.chat_id,
                             frame_index=hit.frame_index,
                             score=hit.score,
                         )
-                        for hit in index.search(frame.vector, top_k)
+                        for hit in index.search(frame.vector, top_k, chat_id=chat_id)
                     ],
                 )
                 for frame in frames
@@ -202,6 +207,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
 
     @app.post("/ban", response_model=BanResponse)
     async def ban(
+        chat_id: Annotated[int, Form()],
         file_unique_id: Annotated[str, Form(min_length=1)],
         media_type: Annotated[str, Form(min_length=1)],
         files: Annotated[list[UploadFile], File(description="Одно изображение или упорядоченные кадры")],
@@ -212,6 +218,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
         try:
             ban_id = vector_service.add_ban(
                 file_unique_id=file_unique_id,
+                chat_id=chat_id,
                 media_type=media_type,
                 frames=[
                     FrameEmbedding(frame_index=index, vector=vector)
@@ -229,6 +236,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
     @app.post("/search", response_model=SearchResponse)
     async def search(
         files: Annotated[list[UploadFile], File(description="Одно изображение или упорядоченные кадры")],
+        chat_id: Annotated[int, Query()],
         top_k: Annotated[int, Query(gt=0)] = 5,
     ) -> SearchResponse:
         vector_service = _require_vector_service(dependencies)
@@ -236,6 +244,7 @@ def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -
 
         try:
             frames = vector_service.search(
+                chat_id=chat_id,
                 frames=[
                     FrameEmbedding(frame_index=index, vector=vector)
                     for index, vector in enumerate(result.vectors)

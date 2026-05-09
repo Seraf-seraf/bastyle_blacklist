@@ -29,11 +29,11 @@ func NewMatcher(matchers ...ports.ContentMatcher) (ports.ContentMatcher, error) 
 	}, nil
 }
 
-func (m *matcher) Block(ctx context.Context, content domain.Content) error {
+func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
 	const methodCtx = "composite/matcher.Block"
 
 	for _, matcher := range m.matchers {
-		if err := matcher.Block(ctx, content); err != nil {
+		if err := matcher.Block(ctx, chatID, content); err != nil {
 			return apperrors.Wrap(methodCtx, err)
 		}
 	}
@@ -41,11 +41,11 @@ func (m *matcher) Block(ctx context.Context, content domain.Content) error {
 	return nil
 }
 
-func (m *matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+func (m *matcher) IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error) {
 	const methodCtx = "composite/matcher.IsBlocked"
 
 	for _, matcher := range m.matchers {
-		blocked, err := matcher.IsBlocked(ctx, content)
+		blocked, err := matcher.IsBlocked(ctx, chatID, content)
 		if err != nil {
 			return false, apperrors.Wrap(methodCtx, err)
 		}

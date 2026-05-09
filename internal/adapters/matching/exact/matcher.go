@@ -11,7 +11,12 @@ import (
 
 type matcher struct {
 	mu      sync.RWMutex
-	blocked map[string]struct{}
+	blocked map[exactKey]struct{}
+}
+
+type exactKey struct {
+	chatID       int64
+	fileUniqueID string
 }
 
 func NewMatcher(buffer int) (ports.ContentMatcher, error) {
@@ -22,11 +27,11 @@ func NewMatcher(buffer int) (ports.ContentMatcher, error) {
 	}
 
 	return &matcher{
-		blocked: make(map[string]struct{}, buffer),
+		blocked: make(map[exactKey]struct{}, buffer),
 	}, nil
 }
 
-func (m *matcher) IsBlocked(_ context.Context, content domain.Content) (bool, error) {
+func (m *matcher) IsBlocked(_ context.Context, chatID int64, content domain.Content) (bool, error) {
 	if content.FileUniqueID == "" {
 		return false, nil
 	}
@@ -34,11 +39,11 @@ func (m *matcher) IsBlocked(_ context.Context, content domain.Content) (bool, er
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	_, ok := m.blocked[content.FileUniqueID]
+	_, ok := m.blocked[exactKey{chatID: chatID, fileUniqueID: content.FileUniqueID}]
 	return ok, nil
 }
 
-func (m *matcher) Block(_ context.Context, content domain.Content) error {
+func (m *matcher) Block(_ context.Context, chatID int64, content domain.Content) error {
 	if content.FileUniqueID == "" {
 		return nil
 	}
@@ -46,6 +51,6 @@ func (m *matcher) Block(_ context.Context, content domain.Content) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.blocked[content.FileUniqueID] = struct{}{}
+	m.blocked[exactKey{chatID: chatID, fileUniqueID: content.FileUniqueID}] = struct{}{}
 	return nil
 }
