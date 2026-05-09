@@ -13,10 +13,10 @@ from ai_vector_service.model import TransformersImageEmbeddingModel
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Embed benchmark images and save vectors to NPZ.")
+    parser = argparse.ArgumentParser(description="Векторизовать benchmark-изображения и сохранить векторы в NPZ.")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--limit", type=int, default=0, help="0 means all manifest rows")
+    parser.add_argument("--limit", type=int, default=0, help="0 означает все строки манифеста")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
@@ -27,7 +27,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.batch_size <= 0:
-        raise SystemExit("--batch-size must be positive")
+        raise SystemExit("--batch-size должен быть положительным")
 
     records = _read_manifest(args.manifest, args.limit)
     decoder = PillowImageDecoder(
@@ -50,7 +50,7 @@ def main() -> None:
 
         embedded = min(offset + len(batch), len(records))
         elapsed = time.perf_counter() - started
-        print(f"embedded {embedded}/{len(records)} elapsed={elapsed:.1f}s")
+        print(f"векторизовано {embedded}/{len(records)} время={elapsed:.1f}s")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
@@ -61,7 +61,7 @@ def main() -> None:
         model_name=np.asarray([args.model_name]),
         model_revision=np.asarray([args.model_revision]),
     )
-    print(f"vectors: {args.output}")
+    print(f"векторы: {args.output}")
 
 
 def _read_manifest(path: Path, limit: int) -> list[dict]:
@@ -74,7 +74,7 @@ def _read_manifest(path: Path, limit: int) -> list[dict]:
                 break
 
     if not records:
-        raise RuntimeError("manifest contains no images")
+        raise RuntimeError("манифест не содержит изображений")
     return records
 
 
