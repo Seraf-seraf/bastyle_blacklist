@@ -1,9 +1,13 @@
 from io import BytesIO
+from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 from ai_vector_service.config import load_settings
 from ai_vector_service.model import TransformersImageEmbeddingModel
+
+
+EXAMPLE_CONFIG_PATH = Path("configs/config.example.yaml")
 
 
 def _base_image() -> Image.Image:
@@ -42,7 +46,7 @@ def _cosine(left: list[float], right: list[float]) -> float:
 
 
 def test_real_model_scores_against_threshold():
-    settings = load_settings()
+    settings = load_settings(EXAMPLE_CONFIG_PATH)
     model = TransformersImageEmbeddingModel(
         settings.model_name,
         settings.model_revision,
