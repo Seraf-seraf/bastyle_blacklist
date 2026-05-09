@@ -3,7 +3,6 @@ package aivector
 import (
 	"bytes"
 	"context"
-	"errors"
 	"image/png"
 	"path/filepath"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 )
 
 type Matcher struct {
@@ -51,8 +51,10 @@ type MatchRule struct {
 }
 
 func NewMatcher(options Options) (*Matcher, error) {
+	const methodCtx = "aivector/NewMatcher"
+
 	if err := validateOptions(options); err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	return &Matcher{
@@ -69,9 +71,11 @@ func NewMatcher(options Options) (*Matcher, error) {
 }
 
 func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
+	const methodCtx = "aivector/Matcher.Block"
+
 	frames, supported, err := m.framesForContent(ctx, content)
 	if err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if !supported {
 		return nil
@@ -82,13 +86,15 @@ func (m *Matcher) Block(ctx context.Context, content domain.Content) error {
 		MediaType:    string(content.Type),
 		Frames:       frames,
 	})
-	return err
+	return apperrors.Wrap(methodCtx, err)
 }
 
 func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, error) {
+	const methodCtx = "aivector/Matcher.IsBlocked"
+
 	frames, supported, err := m.framesForContent(ctx, content)
 	if err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 	if !supported {
 		return false, nil
@@ -99,7 +105,7 @@ func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 		Frames: frames,
 	})
 	if err != nil {
-		return false, err
+		return false, apperrors.Wrap(methodCtx, err)
 	}
 
 	if len(frames) == 1 {
@@ -110,6 +116,8 @@ func (m *Matcher) IsBlocked(ctx context.Context, content domain.Content) (bool, 
 }
 
 func (m *Matcher) framesForContent(ctx context.Context, content domain.Content) ([]FrameFile, bool, error) {
+	const methodCtx = "aivector/Matcher.framesForContent"
+
 	if !content.CanDownload() {
 		return nil, false, nil
 	}
@@ -120,54 +128,59 @@ func (m *Matcher) framesForContent(ctx context.Context, content domain.Content) 
 	case domain.MediaStickerStatic:
 		media, err := m.downloader.Download(ctx, content)
 		if err != nil {
-			return nil, false, err
+			return nil, false, apperrors.Wrap(methodCtx, err)
 		}
 		if isWebMFile(media.FilePath) {
 			if err := m.checkVideoSticker(media); err != nil {
-				return nil, false, err
+				return nil, false, apperrors.Wrap(methodCtx, err)
 			}
 
 			frames, err := m.videoFrames(ctx, media)
-			return frames, true, err
+			return frames, true, apperrors.Wrap(methodCtx, err)
 		}
 
 		frames, err := m.extractFrames(ctx, m.imageExtractor, media, domain.MediaExtractionPlan{MaxFrames: 1})
-		return frames, true, err
+		return frames, true, apperrors.Wrap(methodCtx, err)
 	case domain.MediaAnimation:
 		if err := m.checkAnimationMetadata(content); err != nil {
-			return nil, false, err
+			return nil, false, apperrors.Wrap(methodCtx, err)
 		}
 
 		media, err := m.downloader.Download(ctx, content)
 		if err != nil {
-			return nil, false, err
+			return nil, false, apperrors.Wrap(methodCtx, err)
 		}
 		if err := m.checkAnimationFile(media); err != nil {
-			return nil, false, err
+			return nil, false, apperrors.Wrap(methodCtx, err)
 		}
 
 		frames, err := m.videoFrames(ctx, media)
-		return frames, true, err
+		return frames, true, apperrors.Wrap(methodCtx, err)
 	default:
 		return nil, false, nil
 	}
 }
 
 func (m *Matcher) imageFrames(ctx context.Context, content domain.Content) ([]FrameFile, bool, error) {
+	const methodCtx = "aivector/Matcher.imageFrames"
+
 	media, err := m.downloader.Download(ctx, content)
 	if err != nil {
-		return nil, false, err
+		return nil, false, apperrors.Wrap(methodCtx, err)
 	}
 	if isVideoFile(media.FilePath) {
 		return nil, false, nil
 	}
 
 	frames, err := m.extractFrames(ctx, m.imageExtractor, media, domain.MediaExtractionPlan{MaxFrames: 1})
-	return frames, true, err
+	return frames, true, apperrors.Wrap(methodCtx, err)
 }
 
 func (m *Matcher) videoFrames(ctx context.Context, media domain.MediaFile) ([]FrameFile, error) {
-	return m.extractFrames(ctx, m.videoExtractor, media, m.plan)
+	const methodCtx = "aivector/Matcher.videoFrames"
+
+	frames, err := m.extractFrames(ctx, m.videoExtractor, media, m.plan)
+	return frames, apperrors.Wrap(methodCtx, err)
 }
 
 func (m *Matcher) extractFrames(
@@ -176,19 +189,21 @@ func (m *Matcher) extractFrames(
 	media domain.MediaFile,
 	plan domain.MediaExtractionPlan,
 ) ([]FrameFile, error) {
+	const methodCtx = "aivector/Matcher.extractFrames"
+
 	extracted, err := extractor.Extract(ctx, media, plan)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	if len(extracted.Frames) == 0 {
-		return nil, errors.New("ai vector matcher extractor returned no frames")
+		return nil, apperrors.New(methodCtx, "AI-vector матчер: извлекатель не вернул кадров")
 	}
 
 	frames := make([]FrameFile, 0, len(extracted.Frames))
 	for _, frame := range extracted.Frames {
 		var buffer bytes.Buffer
 		if err := png.Encode(&buffer, frame.Image); err != nil {
-			return nil, err
+			return nil, apperrors.Wrap(methodCtx, err)
 		}
 
 		frames = append(frames, FrameFile{
@@ -242,102 +257,114 @@ func videoLikeMatched(response SearchResponse, checkedFrames int, threshold floa
 }
 
 func validateOptions(options Options) error {
+	const methodCtx = "aivector/validateOptions"
+
 	if options.Downloader == nil {
-		return errors.New("ai vector matcher downloader is not configured")
+		return apperrors.New(methodCtx, "AI-vector матчер: загрузчик не настроен")
 	}
 	if options.ImageExtractor == nil {
-		return errors.New("ai vector matcher image extractor is not configured")
+		return apperrors.New(methodCtx, "AI-vector матчер: извлекатель изображений не настроен")
 	}
 	if options.VideoExtractor == nil {
-		return errors.New("ai vector matcher video extractor is not configured")
+		return apperrors.New(methodCtx, "AI-vector матчер: извлекатель видео не настроен")
 	}
 	if options.Client == nil {
-		return errors.New("ai vector matcher client is not configured")
+		return apperrors.New(methodCtx, "AI-vector матчер: клиент не настроен")
 	}
 	if options.Threshold < 0 || options.Threshold > 1 {
-		return errors.New("ai vector matcher threshold must be between 0 and 1")
+		return apperrors.New(methodCtx, "AI-vector матчер: порог должен быть от 0 до 1")
 	}
 	if options.TopK <= 0 {
-		return errors.New("ai vector matcher top k must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: top_k должен быть положительным")
 	}
 	if options.Plan.MaxFrames <= 0 {
-		return errors.New("ai vector matcher max frames must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: максимальное количество кадров должно быть положительным")
 	}
 	if options.Plan.TargetWidth <= 0 {
-		return errors.New("ai vector matcher target width must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: целевая ширина должна быть положительной")
 	}
 	if options.Plan.TargetHeight <= 0 {
-		return errors.New("ai vector matcher target height must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: целевая высота должна быть положительной")
 	}
 	if err := options.Limits.validate(); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if err := options.Rule.validate(); err != nil {
-		return err
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	return nil
 }
 
 func (l Limits) validate() error {
+	const methodCtx = "aivector/Limits.validate"
+
 	if l.MaxAnimationDuration <= 0 {
-		return errors.New("ai vector matcher max animation duration must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: максимальная длительность анимации должна быть положительной")
 	}
 	if l.MaxVideoStickerDuration <= 0 {
-		return errors.New("ai vector matcher max video sticker duration must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: максимальная длительность видеостикера должна быть положительной")
 	}
 	if l.MaxAnimationSize <= 0 {
-		return errors.New("ai vector matcher max animation size must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: максимальный размер анимации должен быть положительным")
 	}
 	if l.MaxVideoStickerSize <= 0 {
-		return errors.New("ai vector matcher max video sticker size must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: максимальный размер видеостикера должен быть положительным")
 	}
 
 	return nil
 }
 
 func (r MatchRule) validate() error {
+	const methodCtx = "aivector/MatchRule.validate"
+
 	if r.MinMatchedFrames <= 0 {
-		return errors.New("ai vector matcher min matched frames must be positive")
+		return apperrors.New(methodCtx, "AI-vector матчер: минимальное количество совпавших кадров должно быть положительным")
 	}
 	if r.MinMatchedRatio <= 0 || r.MinMatchedRatio > 1 {
-		return errors.New("ai vector matcher min matched ratio must be between 0 and 1")
+		return apperrors.New(methodCtx, "AI-vector матчер: минимальная доля совпавших кадров должна быть от 0 до 1")
 	}
 
 	return nil
 }
 
 func (m *Matcher) checkAnimationMetadata(content domain.Content) error {
+	const methodCtx = "aivector/Matcher.checkAnimationMetadata"
+
 	if time.Duration(content.DurationSec)*time.Second > m.limits.MaxAnimationDuration {
-		return errors.New("ai vector matcher: animation duration exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: длительность анимации превышает лимит")
 	}
 	if content.SizeBytes > m.limits.MaxAnimationSize {
-		return errors.New("ai vector matcher: animation size exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: размер анимации превышает лимит")
 	}
 
 	return nil
 }
 
 func (m *Matcher) checkAnimationFile(media domain.MediaFile) error {
+	const methodCtx = "aivector/Matcher.checkAnimationFile"
+
 	if media.Content.SizeBytes > m.limits.MaxAnimationSize {
-		return errors.New("ai vector matcher: animation size exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: размер анимации превышает лимит")
 	}
 	if int64(len(media.Data)) > m.limits.MaxAnimationSize {
-		return errors.New("ai vector matcher: animation downloaded size exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: размер загруженной анимации превышает лимит")
 	}
 
 	return nil
 }
 
 func (m *Matcher) checkVideoSticker(media domain.MediaFile) error {
+	const methodCtx = "aivector/Matcher.checkVideoSticker"
+
 	if time.Duration(media.Content.DurationSec)*time.Second > m.limits.MaxVideoStickerDuration {
-		return errors.New("ai vector matcher: video sticker duration exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: длительность видеостикера превышает лимит")
 	}
 	if media.Content.SizeBytes > m.limits.MaxVideoStickerSize {
-		return errors.New("ai vector matcher: video sticker size exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: размер видеостикера превышает лимит")
 	}
 	if int64(len(media.Data)) > m.limits.MaxVideoStickerSize {
-		return errors.New("ai vector matcher: video sticker downloaded size exceeds limit")
+		return apperrors.New(methodCtx, "AI-vector матчер: размер загруженного видеостикера превышает лимит")
 	}
 
 	return nil
