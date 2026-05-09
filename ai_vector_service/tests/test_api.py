@@ -88,7 +88,7 @@ def test_embed_rejects_invalid_image():
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "image data is not a supported image"
+    assert response.json()["detail"] == "данные не являются поддерживаемым изображением"
 
 
 def test_embed_rejects_too_many_files():
@@ -108,7 +108,7 @@ def test_embed_rejects_too_many_files():
     )
 
     assert response.status_code == 413
-    assert response.json()["detail"] == "too many files"
+    assert response.json()["detail"] == "слишком много файлов"
 
 
 def test_embed_rejects_upload_over_size_limit():
@@ -125,7 +125,7 @@ def test_embed_rejects_upload_over_size_limit():
     )
 
     assert response.status_code == 413
-    assert response.json()["detail"] == "upload size exceeds limit"
+    assert response.json()["detail"] == "размер загрузки превышает лимит"
 
 
 def test_embed_rejects_image_over_pixel_limit():
@@ -139,7 +139,7 @@ def test_embed_rejects_image_over_pixel_limit():
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "image pixel count exceeds limit"
+    assert response.json()["detail"] == "количество пикселей изображения превышает лимит"
 
 
 def test_ban_saves_vectors():
@@ -168,7 +168,7 @@ def test_vector_index_service_deactivates_ban_when_index_update_fails(tmp_path):
             return None
 
         def add_ban(self, ban):
-            raise RuntimeError("index update failed")
+            raise RuntimeError("обновление индекса завершилось ошибкой")
 
     store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
     service = VectorIndexService(
@@ -191,7 +191,7 @@ def test_vector_index_service_deactivates_ban_when_index_update_fails(tmp_path):
         except RuntimeError:
             pass
         else:
-            raise AssertionError("expected RuntimeError")
+            raise AssertionError("ожидался RuntimeError")
 
         active_bans = store.load_active_bans(
             model_name="fake-model",
@@ -240,4 +240,4 @@ def test_ban_requires_vector_service():
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "vector index service is not configured"
+    assert response.json()["detail"] == "сервис векторного индекса не настроен"
