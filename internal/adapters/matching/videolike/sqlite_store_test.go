@@ -26,31 +26,31 @@ func TestSQLiteStorePersistsVideoLikeHashes(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("insert video-like hash: %v", err)
+		t.Fatalf("вставка video-like hash: %v", err)
 	}
 
 	hashes, err := store.load(ctx)
 	if err != nil {
-		t.Fatalf("load video-like hashes: %v", err)
+		t.Fatalf("загрузка video-like hash: %v", err)
 	}
 
 	if len(hashes) != 1 {
-		t.Fatalf("expected 1 stored video-like hash, got %d", len(hashes))
+		t.Fatalf("ожидалось: 1 сохраненный video-like hash, получено %d", len(hashes))
 	}
 	if hashes[0].ID != id {
-		t.Fatalf("expected id %d, got %d", id, hashes[0].ID)
+		t.Fatalf("ожидалось: id %d, получено %d", id, hashes[0].ID)
 	}
 	if hashes[0].FileUniqueID != "file-unique-id" {
-		t.Fatalf("expected file unique id to round-trip, got %q", hashes[0].FileUniqueID)
+		t.Fatalf("ожидалось: file_unique_id должен сохраниться без изменений, получено %q", hashes[0].FileUniqueID)
 	}
 	if hashes[0].SourceType != domain.MediaAnimation {
-		t.Fatalf("expected source type %q, got %q", domain.MediaAnimation, hashes[0].SourceType)
+		t.Fatalf("ожидалось: тип источника %q, получено %q", domain.MediaAnimation, hashes[0].SourceType)
 	}
 	if hashes[0].DurationSec != 3 {
-		t.Fatalf("expected duration 3, got %d", hashes[0].DurationSec)
+		t.Fatalf("ожидалось: длительность 3, получено %d", hashes[0].DurationSec)
 	}
 	if hashes[0].HashVersion != videoLikeHashVersion {
-		t.Fatalf("expected hash version %q, got %q", videoLikeHashVersion, hashes[0].HashVersion)
+		t.Fatalf("ожидалось: версия хеша %q, получено %q", videoLikeHashVersion, hashes[0].HashVersion)
 	}
 
 	expectedFrames := []StoredVideoLikeFrameHash{
@@ -61,7 +61,7 @@ func TestSQLiteStorePersistsVideoLikeHashes(t *testing.T) {
 	}
 	for i, expected := range expectedFrames {
 		if hashes[0].Frames[i] != expected {
-			t.Fatalf("expected frame[%d] %+v, got %+v", i, expected, hashes[0].Frames[i])
+			t.Fatalf("ожидалось: кадр[%d] %+v, получено %+v", i, expected, hashes[0].Frames[i])
 		}
 	}
 }
@@ -84,26 +84,26 @@ func TestSQLiteStoreDeduplicatesVideoLikeHashes(t *testing.T) {
 
 	firstID, err := store.insert(ctx, hash)
 	if err != nil {
-		t.Fatalf("insert video-like hash: %v", err)
+		t.Fatalf("вставка video-like hash: %v", err)
 	}
 
 	secondID, err := store.insert(ctx, hash)
 	if err != nil {
-		t.Fatalf("insert duplicate video-like hash: %v", err)
+		t.Fatalf("вставка дубликата video-like hash: %v", err)
 	}
 	if secondID != firstID {
-		t.Fatalf("expected duplicate insert to return id %d, got %d", firstID, secondID)
+		t.Fatalf("ожидалось: вставка дубликата должна вернуть id %d, получено %d", firstID, secondID)
 	}
 
 	hashes, err := store.load(ctx)
 	if err != nil {
-		t.Fatalf("load video-like hashes: %v", err)
+		t.Fatalf("загрузка video-like hash: %v", err)
 	}
 	if len(hashes) != 1 {
-		t.Fatalf("expected duplicate insert to keep 1 stored video-like hash, got %d", len(hashes))
+		t.Fatalf("ожидалось: вставка дубликата должна оставить 1 сохраненный video-like hash, получено %d", len(hashes))
 	}
 	if len(hashes[0].Frames) != 3 {
-		t.Fatalf("expected duplicate insert to keep 3 frame hashes, got %d", len(hashes[0].Frames))
+		t.Fatalf("ожидалось: вставка дубликата должна сохранить 3 хеша кадров, получено %d", len(hashes[0].Frames))
 	}
 }
 
@@ -136,23 +136,23 @@ func TestSQLiteStoreLoadsMultipleVideoLikeHashes(t *testing.T) {
 
 	for _, hash := range hashes {
 		if _, err := store.insert(ctx, hash); err != nil {
-			t.Fatalf("insert video-like hash: %v", err)
+			t.Fatalf("вставка video-like hash: %v", err)
 		}
 	}
 
 	storedHashes, err := store.load(ctx)
 	if err != nil {
-		t.Fatalf("load video-like hashes: %v", err)
+		t.Fatalf("загрузка video-like hash: %v", err)
 	}
 	if len(storedHashes) != 2 {
-		t.Fatalf("expected 2 stored video-like hashes, got %d", len(storedHashes))
+		t.Fatalf("ожидалось: 2 сохраненный video-like hashes, получено %d", len(storedHashes))
 	}
 	for i, expected := range hashes {
 		if storedHashes[i].FileUniqueID != expected.FileUniqueID {
-			t.Fatalf("expected hash[%d] file unique id %q, got %q", i, expected.FileUniqueID, storedHashes[i].FileUniqueID)
+			t.Fatalf("ожидалось: hash[%d] file_unique_id %q, получено %q", i, expected.FileUniqueID, storedHashes[i].FileUniqueID)
 		}
 		if len(storedHashes[i].Frames) != len(expected.Frames) {
-			t.Fatalf("expected hash[%d] to have %d frames, got %d", i, len(expected.Frames), len(storedHashes[i].Frames))
+			t.Fatalf("ожидалось: hash[%d] должен содержать %d кадров, получено %d", i, len(expected.Frames), len(storedHashes[i].Frames))
 		}
 	}
 }
@@ -174,24 +174,24 @@ func TestSQLiteStoreAllowsSameSignatureForDifferentHashVersions(t *testing.T) {
 
 	firstID, err := store.insert(ctx, hash)
 	if err != nil {
-		t.Fatalf("insert video-like hash: %v", err)
+		t.Fatalf("вставка video-like hash: %v", err)
 	}
 
 	hash.HashVersion = "other-version"
 	secondID, err := store.insert(ctx, hash)
 	if err != nil {
-		t.Fatalf("insert other version video-like hash: %v", err)
+		t.Fatalf("вставка video-like hash другой версии: %v", err)
 	}
 	if secondID == firstID {
-		t.Fatalf("expected different hash version to create a new row, got id %d", secondID)
+		t.Fatalf("ожидалось: другая версия хеша должна создать новую строку, получено id %d", secondID)
 	}
 
 	hashes, err := store.load(ctx)
 	if err != nil {
-		t.Fatalf("load video-like hashes: %v", err)
+		t.Fatalf("загрузка video-like hash: %v", err)
 	}
 	if len(hashes) != 1 {
-		t.Fatalf("expected load to return only current version hashes, got %d", len(hashes))
+		t.Fatalf("ожидалось: загрузка должна вернуть только хеши текущей версии, получено %d", len(hashes))
 	}
 }
 
@@ -200,11 +200,11 @@ func newTestSQLiteStore(t *testing.T, ctx context.Context) *sqliteStore {
 
 	store, err := OpenSQLiteStore(ctx, filepath.Join(t.TempDir(), "videolike.sqlite"))
 	if err != nil {
-		t.Fatalf("open sqlite store: %v", err)
+		t.Fatalf("открытие SQLite-хранилища: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := store.close(); err != nil {
-			t.Fatalf("close sqlite store: %v", err)
+			t.Fatalf("закрытие SQLite-хранилища: %v", err)
 		}
 	})
 
