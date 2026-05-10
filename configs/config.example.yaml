@@ -28,6 +28,7 @@ media_config:
 
 matching:
   exact:
+    db_path: "bastyle.sqlite"
     buffer: 500
   image_hash:
     db_path: "bastyle.sqlite"

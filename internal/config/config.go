@@ -53,7 +53,8 @@ type Matching struct {
 }
 
 type Exact struct {
-	Buffer int `yaml:"buffer"`
+	DBPath string `yaml:"db_path"`
+	Buffer int    `yaml:"buffer"`
 }
 
 type ImageHash struct {
@@ -204,6 +205,7 @@ func defaultConfig() Config {
 		MediaConfig: defaultMediaConfig(),
 		Matching: Matching{
 			Exact: Exact{
+				DBPath: "bastyle.sqlite",
 				Buffer: 500,
 			},
 			ImageHash: ImageHash{
@@ -292,6 +294,9 @@ func (c Config) validate() error {
 	}
 	if c.JobsBuffer <= 0 {
 		return apperrors.New(methodCtx, "буфер задач должен быть положительным")
+	}
+	if c.Matching.Exact.DBPath == "" {
+		return apperrors.New(methodCtx, "путь к БД exact обязателен")
 	}
 	if c.Matching.Exact.Buffer <= 0 {
 		return apperrors.New(methodCtx, "буфер exact-матчера должен быть положительным")

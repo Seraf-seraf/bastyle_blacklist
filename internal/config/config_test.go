@@ -35,6 +35,7 @@ media_config:
   ffmpeg_timeout: 7s
 matching:
   exact:
+    db_path: "exact.sqlite"
     buffer: 30
   image_hash:
     db_path: "test.sqlite"
@@ -99,6 +100,9 @@ matching:
 	}
 	if cfg.JobsBuffer != 20 {
 		t.Fatalf("неожиданное значение буфер задач: %d", cfg.JobsBuffer)
+	}
+	if cfg.Matching.Exact.DBPath != "exact.sqlite" {
+		t.Fatalf("неожиданное значение exact путь БД: %q", cfg.Matching.Exact.DBPath)
 	}
 	if cfg.Matching.Exact.Buffer != 30 {
 		t.Fatalf("неожиданное значение буфер exact: %d", cfg.Matching.Exact.Buffer)
@@ -235,6 +239,9 @@ matching:
 	}
 	if cfg.Health.Port != 8081 {
 		t.Fatalf("неожиданное значение по умолчанию: порт health-сервера: %d", cfg.Health.Port)
+	}
+	if cfg.Matching.Exact.DBPath != "bastyle.sqlite" {
+		t.Fatalf("неожиданное значение по умолчанию: exact путь БД: %q", cfg.Matching.Exact.DBPath)
 	}
 	if cfg.Matching.ImageHash.Threshold != 12 {
 		t.Fatalf("неожиданное значение по умолчанию: image-hash порог: %d", cfg.Matching.ImageHash.Threshold)

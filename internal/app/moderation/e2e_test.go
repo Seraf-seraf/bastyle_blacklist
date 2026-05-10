@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -144,7 +145,7 @@ func newE2EModerationService(
 ) (*service, func()) {
 	t.Helper()
 
-	exactMatcher, err := exact.NewMatcher(10)
+	exactMatcher, err := exact.NewSQLiteMatcher(context.Background(), 10, filepath.Join(t.TempDir(), "exact.sqlite"))
 	if err != nil {
 		t.Fatalf("создание exact-матчера: %v", err)
 	}
@@ -169,6 +170,9 @@ func newE2EModerationService(
 	}
 
 	return service, func() {
+		if err := exactMatcher.Close(); err != nil {
+			t.Fatalf("закрытие exact-матчера: %v", err)
+		}
 		if err := imageHashMatcher.Close(); err != nil {
 			t.Fatalf("закрытие imagehash-матчера: %v", err)
 		}
