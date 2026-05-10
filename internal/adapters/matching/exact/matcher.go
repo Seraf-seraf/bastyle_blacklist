@@ -12,6 +12,7 @@ import (
 type matcher struct {
 	mu      sync.RWMutex
 	blocked map[exactKey]struct{}
+	store   *sqliteStore
 }
 
 type exactKey struct {
@@ -19,16 +20,55 @@ type exactKey struct {
 	fileUniqueID string
 }
 
-func NewMatcher(buffer int) (ports.ContentMatcher, error) {
-	const methodCtx = "exact/NewMatcher"
+func newMatcher(buffer int) (*matcher, error) {
+	const methodCtx = "exact/newMatcher"
 
 	if buffer < 0 {
 		return nil, apperrors.New(methodCtx, "буфер exact-матчера не должен быть отрицательным")
 	}
 
-	return &matcher{
-		blocked: make(map[exactKey]struct{}, buffer),
-	}, nil
+	return &matcher{blocked: make(map[exactKey]struct{}, buffer)}, nil
+}
+
+func NewSQLiteMatcher(ctx context.Context, buffer int, dbPath string) (*matcher, error) {
+	const methodCtx = "exact/NewSQLiteMatcher"
+
+	if dbPath == "" {
+		return nil, apperrors.New(methodCtx, "путь к БД exact-матчера не настроен")
+	}
+
+	store, err := OpenSQLiteStore(ctx, dbPath)
+	if err != nil {
+		return nil, apperrors.Wrap(methodCtx, err)
+	}
+
+	stored, err := store.load(ctx)
+	if err != nil {
+		_ = store.close()
+		return nil, apperrors.Wrap(methodCtx, err)
+	}
+
+	matcher, err := newMatcher(buffer + len(stored))
+	if err != nil {
+		_ = store.close()
+		return nil, apperrors.Wrap(methodCtx, err)
+	}
+	matcher.store = store
+	for _, item := range stored {
+		matcher.blocked[exactKey{chatID: item.ChatID, fileUniqueID: item.FileUniqueID}] = struct{}{}
+	}
+
+	return matcher, nil
+}
+
+func (m *matcher) Close() error {
+	const methodCtx = "exact/matcher.Close"
+
+	if m.store == nil {
+		return nil
+	}
+
+	return apperrors.Wrap(methodCtx, m.store.close())
 }
 
 func (m *matcher) IsBlocked(_ context.Context, chatID int64, content domain.Content) (bool, error) {
@@ -43,14 +83,24 @@ func (m *matcher) IsBlocked(_ context.Context, chatID int64, content domain.Cont
 	return ok, nil
 }
 
-func (m *matcher) Block(_ context.Context, chatID int64, content domain.Content) error {
+func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
+	const methodCtx = "exact/matcher.Block"
+
 	if content.FileUniqueID == "" {
 		return nil
+	}
+	if m.store == nil {
+		return apperrors.New(methodCtx, "хранилище exact не настроено")
+	}
+
+	if err := m.store.insert(ctx, chatID, content.FileUniqueID); err != nil {
+		return apperrors.Wrap(methodCtx, err)
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	m.blocked[exactKey{chatID: chatID, fileUniqueID: content.FileUniqueID}] = struct{}{}
 	return nil
 }
+
+var _ ports.ContentMatcher = (*matcher)(nil)

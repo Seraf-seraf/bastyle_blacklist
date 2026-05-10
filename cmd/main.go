@@ -64,7 +64,7 @@ func main() {
 		bot.StopReceivingUpdates()
 	}()
 
-	exactMatcher, err := exact.NewMatcher(cfg.Matching.Exact.Buffer)
+	exactMatcher, err := exact.NewSQLiteMatcher(ctx, cfg.Matching.Exact.Buffer, cfg.Matching.Exact.DBPath)
 	if err != nil {
 		panicWithContext(methodCtx, err)
 	}
@@ -86,6 +86,12 @@ func main() {
 	}
 	defer func() {
 		if err := imageHashMatcher.Close(); err != nil {
+			logError(methodCtx, err)
+		}
+	}()
+
+	defer func() {
+		if err := exactMatcher.Close(); err != nil {
 			logError(methodCtx, err)
 		}
 	}()
