@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -68,6 +69,43 @@ def test_sqlite_vector_store_loads_after_reopen(tmp_path: Path):
     assert len(bans) == 1
     assert bans[0].file_unique_id == "file-unique-id"
     assert bans[0].frames[0].vector == [1.0, 0.0]
+
+
+def test_sqlite_vector_store_records_applied_migrations(tmp_path: Path):
+    db_path = tmp_path / "vectors.sqlite"
+    store = SQLiteVectorStore(db_path)
+    store.close()
+
+    db = sqlite3.connect(db_path)
+    try:
+        rows = db.execute(
+            """
+SELECT version, name
+FROM ai_vector_schema_migrations
+ORDER BY version
+"""
+        ).fetchall()
+    finally:
+        db.close()
+
+    assert rows == [(1, "create_ai_vector_schema")]
+
+
+def test_sqlite_vector_store_does_not_reapply_migrations_on_reopen(tmp_path: Path):
+    db_path = tmp_path / "vectors.sqlite"
+    first = SQLiteVectorStore(db_path)
+    first.close()
+
+    second = SQLiteVectorStore(db_path)
+    second.close()
+
+    db = sqlite3.connect(db_path)
+    try:
+        migrations_count = db.execute("SELECT COUNT(*) FROM ai_vector_schema_migrations").fetchone()[0]
+    finally:
+        db.close()
+
+    assert migrations_count == 1
 
 
 def test_sqlite_vector_store_deactivates_ban(tmp_path: Path):

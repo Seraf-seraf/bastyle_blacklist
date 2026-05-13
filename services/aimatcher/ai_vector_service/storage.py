@@ -1,8 +1,14 @@
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 import sqlite3
 
 import numpy as np
+
+MIGRATIONS_PACKAGE = "ai_vector_service.migrations"
+MIGRATIONS_TABLE = "ai_vector_schema_migrations"
+UP_MARKER = "-- +bastyle Up"
+DOWN_MARKER = "-- +bastyle Down"
 
 
 @dataclass(frozen=True)
@@ -249,58 +255,19 @@ WHERE model_name = ? AND model_revision = ? AND vector_dim = ? AND index_type = 
 
     def _ensure_schema(self) -> None:
         self._db.executescript(
-            """
+            f"""
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 
-CREATE TABLE IF NOT EXISTS ai_vector_ban (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id INTEGER NOT NULL DEFAULT 0,
-    file_unique_id TEXT NOT NULL,
-    media_type TEXT NOT NULL,
-    model_name TEXT NOT NULL,
-    model_revision TEXT NOT NULL,
-    vector_dim INTEGER NOT NULL,
-    frames_count INTEGER NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS {MIGRATIONS_TABLE} (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE TABLE IF NOT EXISTS ai_vector_frame (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ban_id INTEGER NOT NULL,
-    frame_index INTEGER NOT NULL,
-    position_millis INTEGER NOT NULL,
-    vector_blob BLOB NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (ban_id, frame_index),
-    FOREIGN KEY (ban_id) REFERENCES ai_vector_ban(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS ai_vector_index_state (
-    model_name TEXT NOT NULL,
-    model_revision TEXT NOT NULL,
-    vector_dim INTEGER NOT NULL,
-    index_type TEXT NOT NULL,
-    index_path TEXT NOT NULL,
-    active_vectors_count INTEGER NOT NULL,
-    active_vectors_hash TEXT NOT NULL DEFAULT '',
-    index_file_sha256 TEXT NOT NULL DEFAULT '',
-    rebuilt_at TEXT NOT NULL,
-    PRIMARY KEY (model_name, model_revision, vector_dim, index_type)
-);
-
-CREATE INDEX IF NOT EXISTS ai_vector_ban_active_model_idx
-ON ai_vector_ban(active, model_name, model_revision, vector_dim);
-
-CREATE INDEX IF NOT EXISTS ai_vector_ban_chat_active_model_idx
-ON ai_vector_ban(chat_id, active, model_name, model_revision, vector_dim);
-
-CREATE INDEX IF NOT EXISTS ai_vector_frame_ban_idx
-ON ai_vector_frame(ban_id, frame_index);
 """
         )
+        _apply_migrations(self._db)
 
     def _validate_ban(
         self,
@@ -389,3 +356,62 @@ def _blob_to_vector(blob: bytes, dimension: int) -> list[float]:
         raise ValueError("размерность сохраненного вектора не совпадает")
 
     return vector.astype(np.float32).tolist()
+
+
+def _apply_migrations(db: sqlite3.Connection) -> None:
+    applied_versions = _applied_migration_versions(db)
+    for migration in _load_migrations():
+        if migration.version in applied_versions:
+            continue
+
+        with db:
+            db.executescript(migration.up_sql)
+            db.execute(
+                f"INSERT INTO {MIGRATIONS_TABLE} (version, name) VALUES (?, ?)",
+                (migration.version, migration.name),
+            )
+
+
+@dataclass(frozen=True)
+class _Migration:
+    version: int
+    name: str
+    up_sql: str
+
+
+def _applied_migration_versions(db: sqlite3.Connection) -> set[int]:
+    rows = db.execute(f"SELECT version FROM {MIGRATIONS_TABLE}").fetchall()
+    return {int(row["version"]) for row in rows}
+
+
+def _load_migrations() -> list[_Migration]:
+    migrations: list[_Migration] = []
+    for migration_file in sorted(resources.files(MIGRATIONS_PACKAGE).iterdir()):
+        if migration_file.suffix != ".sql":
+            continue
+
+        version, name = _parse_migration_name(migration_file.name)
+        sql = migration_file.read_text(encoding="utf-8")
+        migrations.append(_Migration(version=version, name=name, up_sql=_extract_up_sql(sql)))
+
+    return migrations
+
+
+def _parse_migration_name(filename: str) -> tuple[int, str]:
+    version_raw, separator, name = filename.partition("_")
+    if separator == "" or not version_raw.isdigit():
+        raise ValueError(f"некорректное имя миграции: {filename}")
+
+    return int(version_raw), name.removesuffix(".sql")
+
+
+def _extract_up_sql(sql: str) -> str:
+    up_index = sql.find(UP_MARKER)
+    if up_index == -1:
+        raise ValueError(f"миграция должна содержать {UP_MARKER}")
+
+    down_index = sql.find(DOWN_MARKER, up_index + len(UP_MARKER))
+    if down_index == -1:
+        return sql[up_index + len(UP_MARKER) :].strip()
+
+    return sql[up_index + len(UP_MARKER) : down_index].strip()
