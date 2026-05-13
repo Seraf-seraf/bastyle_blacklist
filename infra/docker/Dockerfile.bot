@@ -2,10 +2,10 @@ FROM golang:1.25.4-bookworm AS builder
 
 WORKDIR /src
 
-COPY go.mod go.sum ./
+COPY services/bot/go.mod services/bot/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY services/bot/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bastyle-blacklist ./cmd/main.go
 
 FROM debian:bookworm-slim

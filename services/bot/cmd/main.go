@@ -39,7 +39,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	configPath := flag.String("config", "configs/config.yaml", "путь к YAML-конфигу")
+	configPath := flag.String("config", "infra/config/config.yaml", "путь к YAML-конфигу")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)

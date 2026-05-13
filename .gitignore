@@ -8,7 +8,7 @@
 vendor/
 main
 bastyle
-build/bin/
+infra/bin/
 data/
 __pycache__/
 *.py[cod]

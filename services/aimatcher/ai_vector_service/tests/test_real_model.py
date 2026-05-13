@@ -7,7 +7,7 @@ from ai_vector_service.config import load_settings
 from ai_vector_service.model import TransformersImageEmbeddingModel
 
 
-EXAMPLE_CONFIG_PATH = Path("configs/config.example.yaml")
+EXAMPLE_CONFIG_PATH = Path("infra/config/config.example.yaml")
 
 
 def _base_image() -> Image.Image:

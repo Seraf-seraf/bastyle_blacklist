@@ -2,11 +2,11 @@ services:
   bastyle-blacklist:
     build:
       context: .
-      dockerfile: build/Dockerfile
+      dockerfile: infra/docker/Dockerfile.bot
     image: bastyle-blacklist:local
     restart: unless-stopped
     volumes:
-      - ./configs/config.yaml:/etc/bastyle/config.yaml:ro
+      - ./infra/config/config.yaml:/etc/bastyle/config.yaml:ro
       - bastyle-data:/var/lib/bastyle
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
@@ -20,14 +20,14 @@ services:
           cpus: "4"
           memory: 512M
 
-  bastyle-ai-vector:
+  bastyle-aimatcher:
     build:
       context: .
-      dockerfile: build/Dockerfile.ai-vector
-    image: bastyle-ai-vector:local
+      dockerfile: infra/docker/Dockerfile.aimatcher
+    image: bastyle-aimatcher:local
     restart: unless-stopped
     volumes:
-      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./infra/config/config.yaml:/app/infra/config/config.yaml:ro
       - bastyle-data:/var/lib/bastyle
     healthcheck:
       test:

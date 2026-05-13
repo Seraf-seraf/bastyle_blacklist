@@ -65,12 +65,25 @@ Telegram group
 один раз, а Go-бот обращался к ней по HTTP. SQLite хранит активные ban-записи и
 векторы, Faiss HNSW используется как производный индекс для быстрого поиска.
 
+## Структура проекта
+
+```text
+services/
+  bot/        Go Telegram bot service
+  aimatcher/  Python FastAPI AI matching service
+infra/
+  config/     application configs
+  docker/     service Dockerfiles
+  bin/        local build artifacts
+  systemd/    systemd unit files
+```
+
 ## Требования
 
 - Go `1.25.4` или совместимая версия;
 - Telegram bot token от `@BotFather`;
 - FFmpeg для video-like matching и AI vector matching кадров;
-- Python service dependencies из `ai_vector_service/requirements.txt`, если включен
+- Python service dependencies из `services/aimatcher/ai_vector_service/requirements.txt`, если включен
   `matching.ai_vector.enabled`;
 - доступ на запись к SQLite-файлу;
 - бот добавлен в группу администратором;
@@ -87,7 +100,7 @@ ffmpeg -version
 ### 1. Создать бота
 
 Создайте бота через `@BotFather` и получите token. Token указывается в
-`configs/config.yaml`:
+`infra/config/config.yaml`:
 
 ```yaml
 telegram:
@@ -133,7 +146,7 @@ telegram:
 Создайте рабочий config:
 
 ```bash
-cp configs/config.example.yaml configs/config.yaml
+cp infra/config/config.example.yaml infra/config/config.yaml
 ```
 
 Пример полной конфигурации:
@@ -197,7 +210,7 @@ matching:
     min_matched_ratio: 0.4
     request_timeout: 10s
     service:
-      host: "bastyle-ai-vector"
+      host: "bastyle-aimatcher"
       port: 8080
     hnsw:
       m: 32
@@ -243,7 +256,7 @@ AI vector service.
 Локально:
 
 ```bash
-go run ./cmd/main.go -config configs/config.yaml
+go -C services/bot run ./cmd/main.go -config ../../infra/config/config.yaml
 ```
 
 После успешного запуска бот пишет в лог:
@@ -257,7 +270,7 @@ go run ./cmd/main.go -config configs/config.yaml
 Сборка:
 
 ```bash
-docker build -f build/Dockerfile -t bastyle-blacklist:1.2.0 .
+docker build -f infra/docker/Dockerfile.bot -t bastyle-blacklist:1.2.0 .
 ```
 
 Запуск:
@@ -266,7 +279,7 @@ docker build -f build/Dockerfile -t bastyle-blacklist:1.2.0 .
 docker run --rm \
   --memory 512m \
   --memory-swap 512m \
-  -v "$PWD/configs/config.yaml:/etc/bastyle/config.yaml:ro" \
+  -v "$PWD/infra/config/config.yaml:/etc/bastyle/config.yaml:ro" \
   -v bastyle-data:/var/lib/bastyle \
   bastyle-blacklist:1.2.0
 ```
@@ -289,7 +302,7 @@ matching:
 Запуск через Compose:
 
 ```bash
-cp configs/config.example.yaml configs/config.yaml
+cp infra/config/config.example.yaml infra/config/config.yaml
 make up
 ```
 
@@ -300,9 +313,9 @@ make down
 ```
 
 Compose монтирует config в `/etc/bastyle/config.yaml` для Go-бота, в
-`/app/configs/config.yaml` для AI-сервиса и общий volume `/var/lib/bastyle` для
+`/app/infra/config/config.yaml` для AI-сервиса и общий volume `/var/lib/bastyle` для
 SQLite, Faiss index и runtime-данных. Контейнер Go-бота ограничен `512m`
-памяти, контейнер `bastyle-ai-vector` - `2g`.
+памяти, контейнер `bastyle-aimatcher` - `2g`.
 
 ## Systemd
 
@@ -310,7 +323,7 @@ SQLite, Faiss index и runtime-данных. Контейнер Go-бота ог
 
 ```bash
 make build
-sudo install -o root -g root -m 0755 build/bin/bastyle-blacklist /usr/local/bin/bastyle-blacklist
+sudo install -o root -g root -m 0755 infra/bin/bastyle-blacklist /usr/local/bin/bastyle-blacklist
 ```
 
 Подготовка пользователя, config и директории данных:
@@ -319,7 +332,7 @@ sudo install -o root -g root -m 0755 build/bin/bastyle-blacklist /usr/local/bin/
 id -u bastyle_bot >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin/nologin bastyle_bot
 sudo install -d -o bastyle_bot -g bastyle_bot -m 0750 /var/lib/bastyle
 sudo install -d -o root -g root -m 0755 /etc/bastyle
-sudo install -o root -g root -m 0640 configs/config.example.yaml /etc/bastyle/config.yaml
+sudo install -o root -g root -m 0640 infra/config/config.example.yaml /etc/bastyle/config.yaml
 ```
 
 В `/etc/bastyle/config.yaml` укажите Telegram token и пути к SQLite:
@@ -338,7 +351,7 @@ matching:
 Установка unit-файла:
 
 ```bash
-sudo install -o root -g root -m 0644 build/bastyle-blacklist.service /etc/systemd/system/bastyle-blacklist.service
+sudo install -o root -g root -m 0644 infra/systemd/bastyle-blacklist.service /etc/systemd/system/bastyle-blacklist.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now bastyle-blacklist
 ```

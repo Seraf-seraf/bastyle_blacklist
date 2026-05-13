@@ -1,9 +1,12 @@
 APP := bastyle-blacklist
-BUILD_DIR := build/bin
+BOT_DIR := services/bot
+AIMATCHER_DIR := services/aimatcher
+BUILD_DIR := infra/bin
 IMAGE ?= $(APP):local
-CONFIG ?= configs/config.yaml
-COMPOSE := docker compose -f build/docker-compose.yaml --project-directory .
+CONFIG ?= infra/config/config.yaml
+COMPOSE := docker compose -f infra/docker-compose.yaml --project-directory .
 PYTHON := .venv/bin/python
+PYTHONPATH := $(AIMATCHER_DIR)
 
 .PHONY: help fmt fmt-check vet test py-test build clean up stop down ps logs ci
 
@@ -24,23 +27,23 @@ help:
 	@echo "  make logs      - логи всех сервисов (follow)"
 
 fmt:
-	gofmt -w cmd internal
+	gofmt -w $(BOT_DIR)/cmd $(BOT_DIR)/internal
 
 fmt-check:
-	@test -z "$$(gofmt -l cmd internal)"
+	@test -z "$$(gofmt -l $(BOT_DIR)/cmd $(BOT_DIR)/internal)"
 
 vet:
-	go vet ./...
+	go -C $(BOT_DIR) vet ./...
 
 test:
-	go test ./...
+	go -C $(BOT_DIR) test ./...
 
 py-test:
-	$(PYTHON) -m pytest ai_vector_service/tests
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m pytest $(AIMATCHER_DIR)/ai_vector_service/tests
 
 build:
 	mkdir -p $(BUILD_DIR)
-	go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/$(APP) ./cmd/main.go
+	go -C $(BOT_DIR) build -trimpath -ldflags="-s -w" -o ../../$(BUILD_DIR)/$(APP) ./cmd/main.go
 
 clean:
 	rm -rf $(BUILD_DIR)
