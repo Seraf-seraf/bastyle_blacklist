@@ -257,31 +257,7 @@ func startHealthServer(ctx context.Context, address string, readiness readinessC
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
-		if readiness == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"status":"ready"}`))
-			return
-		}
-
-		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-		if err := readiness(checkCtx); err != nil {
-			logError(methodCtx, err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"not_ready"}`))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ready"}`))
+		writeReadinessStatus(ctx, w, readiness)
 	})
 
 	listener, err := net.Listen("tcp", address)
@@ -311,6 +287,26 @@ func startHealthServer(ctx context.Context, address string, readiness readinessC
 	}()
 
 	return server, nil
+}
+
+func writeReadinessStatus(ctx context.Context, w http.ResponseWriter, readiness readinessCheck) {
+	const methodCtx = "cmd/writeReadinessStatus"
+
+	if readiness != nil {
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		if err := readiness(checkCtx); err != nil {
+			logError(methodCtx, err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unavailable"}`))
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 func newTelegramBot(cfg config.Config) (*tgbotapi.BotAPI, error) {
