@@ -42,6 +42,14 @@
 
 ## Architecture
 
+Текущий runtime `v1.2.1` использует Docker Compose, Go Telegram bot, отдельный
+Python/FastAPI AI matcher и SQLite как локальное хранилище. Целевая архитектура
+масштабирования зафиксирована в [docs/README.md](docs/README.md):
+PostgreSQL primary становится единым source of truth, standby PostgreSQL
+используется для HA/read-only сценариев, RabbitMQ передает события обновления
+индексов, а локальные exact/imagehash/videolike/FAISS индексы являются
+производным cache.
+
 ```text
 Telegram group
   -> Telegram Bot API
@@ -64,6 +72,10 @@ Telegram group
 вынесен в отдельный долгоживущий Python/FastAPI сервис, чтобы модель загружалась
 один раз, а Go-бот обращался к ней по HTTP. SQLite хранит активные ban-записи и
 векторы, Faiss HNSW используется как производный индекс для быстрого поиска.
+
+В целевой схеме per-replica SQLite убирается: все write-операции приложения идут
+в PostgreSQL primary, standby replicas остаются read-only до failover, а любой
+сомнительный локальный индекс пересобирается из PostgreSQL.
 
 ## Структура проекта
 
