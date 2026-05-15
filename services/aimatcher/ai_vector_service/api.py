@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import threading
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
@@ -54,6 +54,7 @@ class Dependencies:
     decoder: ImageDecoder
     model: ImageEmbeddingModel
     vectors: "VectorIndexService | None" = None
+    database: object | None = None
 
 
 @dataclass(frozen=True)
@@ -182,12 +183,24 @@ class VectorIndexService:
         return self._index
 
 
-def create_app(dependencies: Dependencies, limits: UploadLimits | None = None) -> FastAPI:
+def create_app(
+    dependencies: Dependencies,
+    limits: UploadLimits | None = None,
+    lifespan: Any | None = None,
+) -> FastAPI:
     limits = limits or UploadLimits()
-    app = FastAPI(title="Bastyle AI Vector Service")
+    app = FastAPI(title="Bastyle AI Vector Service", lifespan=lifespan)
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
+        if dependencies.database is None:
+            raise HTTPException(status_code=503, detail="PostgreSQL pool не настроен")
+
+        try:
+            dependencies.database.ping()
+        except Exception as err:
+            raise HTTPException(status_code=503, detail="PostgreSQL недоступен") from err
+
         return HealthResponse(status="ok", model_name=dependencies.model.model_name)
 
     @app.post("/embed", response_model=EmbedResponse)

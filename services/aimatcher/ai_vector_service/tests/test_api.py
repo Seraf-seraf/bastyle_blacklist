@@ -52,6 +52,17 @@ class FakeVectorService:
         ]
 
 
+class FakeDatabase:
+    def __init__(self, err=None):
+        self.err = err
+        self.pings = 0
+
+    def ping(self):
+        self.pings += 1
+        if self.err is not None:
+            raise self.err
+
+
 def png_bytes() -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (8, 8), "white").save(buffer, format="PNG")
@@ -78,6 +89,36 @@ def test_embed_returns_vectors_for_ordered_frames():
             {"frame_index": 1, "vector": [1.0, 0.0, 0.0]},
         ],
     }
+
+
+def test_health_returns_ok_when_database_is_available():
+    database = FakeDatabase()
+    client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel(), database=database)))
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "model_name": "fake-model"}
+    assert database.pings == 1
+
+
+def test_health_returns_unavailable_when_database_is_missing():
+    client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel())))
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "PostgreSQL pool не настроен"
+
+
+def test_health_returns_unavailable_when_database_ping_fails():
+    database = FakeDatabase(RuntimeError("нет соединения"))
+    client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel(), database=database)))
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "PostgreSQL недоступен"
 
 
 def test_embed_rejects_invalid_image():
