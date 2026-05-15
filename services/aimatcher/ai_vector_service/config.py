@@ -21,13 +21,21 @@ BYTE_UNITS = {
 
 
 @dataclass(frozen=True)
+class DatabaseSettings:
+    dsn: str
+    min_size: int
+    max_size: int
+    connect_timeout: float
+
+
+@dataclass(frozen=True)
 class Settings:
     host: str
     port: int
     model_name: str
     model_revision: str
     device: str
-    db_path: str
+    database: DatabaseSettings
     index_path: str
     max_files: int
     max_upload_bytes: int
@@ -43,6 +51,7 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         config = yaml.safe_load(file) or {}
 
     ai_vector = config.get("matching", {}).get("ai_vector", {})
+    database = config.get("database", {})
     media_config = config.get("media_config", {})
     service = ai_vector.get("service", {})
     hnsw = ai_vector.get("hnsw", {})
@@ -53,7 +62,12 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         model_name=str(ai_vector.get("model_name", DEFAULT_MODEL_NAME)),
         model_revision=str(ai_vector.get("model_revision", DEFAULT_MODEL_REVISION)),
         device=str(ai_vector.get("device", "cpu")),
-        db_path=str(ai_vector.get("db_path", "bastyle.sqlite")),
+        database=DatabaseSettings(
+            dsn=str(database.get("dsn", "postgres://bastyle:bastyle@bastyle-postgresql:5432/bastyle?sslmode=disable")),
+            min_size=int(database.get("min_conns", 1)),
+            max_size=int(database.get("max_conns", 10)),
+            connect_timeout=parse_duration_seconds(database.get("connect_timeout", "5s")),
+        ),
         index_path=str(ai_vector.get("index_path", "faiss-image.index")),
         max_files=int(ai_vector.get("max_files", 10)),
         max_upload_bytes=parse_byte_size(media_config.get("max_upload_bytes", "20MiB")),
@@ -67,6 +81,23 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
             ef_search=int(hnsw.get("ef_search", 64)),
         ),
     )
+
+
+def parse_duration_seconds(value: object) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    raw = str(value).strip()
+    if raw.endswith("ms"):
+        return float(raw[:-2]) / 1000
+    if raw.endswith("s"):
+        return float(raw[:-1])
+    if raw.endswith("m"):
+        return float(raw[:-1]) * 60
+    if raw.endswith("h"):
+        return float(raw[:-1]) * 60 * 60
+
+    return float(raw)
 
 
 def parse_byte_size(value: object) -> int:

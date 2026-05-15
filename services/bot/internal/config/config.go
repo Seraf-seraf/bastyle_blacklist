@@ -22,6 +22,7 @@ type Config struct {
 	Telegram Telegram `yaml:"telegram"`
 	Workers  int      `yaml:"workers"`
 	Health   Health   `yaml:"health"`
+	Database Database `yaml:"database"`
 
 	JobsBuffer  int         `yaml:"jobs_buffer"`
 	MediaConfig MediaConfig `yaml:"media_config"`
@@ -45,6 +46,22 @@ type Health struct {
 	Port    int    `yaml:"port"`
 }
 
+type Database struct {
+	DSN               string            `yaml:"dsn"`
+	MaxConns          int               `yaml:"max_conns"`
+	MinConns          int               `yaml:"min_conns"`
+	MaxConnLifetime   Duration          `yaml:"max_conn_lifetime"`
+	MaxConnIdleTime   Duration          `yaml:"max_conn_idle_time"`
+	HealthCheckPeriod Duration          `yaml:"health_check_period"`
+	ConnectTimeout    Duration          `yaml:"connect_timeout"`
+	StatementTimeout  Duration          `yaml:"statement_timeout"`
+	Migration         DatabaseMigration `yaml:"migration"`
+}
+
+type DatabaseMigration struct {
+	Enabled bool `yaml:"enabled"`
+}
+
 type Matching struct {
 	Exact     Exact     `yaml:"exact"`
 	ImageHash ImageHash `yaml:"image_hash"`
@@ -53,18 +70,15 @@ type Matching struct {
 }
 
 type Exact struct {
-	DBPath string `yaml:"db_path"`
-	Buffer int    `yaml:"buffer"`
+	Buffer int `yaml:"buffer"`
 }
 
 type ImageHash struct {
-	DBPath    string `yaml:"db_path"`
-	Threshold int    `yaml:"threshold"`
-	Buffer    int    `yaml:"buffer"`
+	Threshold int `yaml:"threshold"`
+	Buffer    int `yaml:"buffer"`
 }
 
 type VideoLike struct {
-	DBPath           string  `yaml:"db_path"`
 	Threshold        int     `yaml:"threshold"`
 	Buffer           int     `yaml:"buffer"`
 	MinMatchedFrames int     `yaml:"min_matched_frames"`
@@ -76,7 +90,6 @@ type AIVector struct {
 	ModelName        string          `yaml:"model_name"`
 	ModelRevision    string          `yaml:"model_revision"`
 	Device           string          `yaml:"device"`
-	DBPath           string          `yaml:"db_path"`
 	IndexPath        string          `yaml:"index_path"`
 	MaxFiles         int             `yaml:"max_files"`
 	Threshold        float64         `yaml:"threshold"`
@@ -201,20 +214,30 @@ func defaultConfig() Config {
 			Host:    "127.0.0.1",
 			Port:    8081,
 		},
+		Database: Database{
+			DSN:               "postgres://bastyle:bastyle@bastyle-postgresql:5432/bastyle?sslmode=disable",
+			MaxConns:          10,
+			MinConns:          1,
+			MaxConnLifetime:   Duration(time.Hour),
+			MaxConnIdleTime:   Duration(15 * time.Minute),
+			HealthCheckPeriod: Duration(30 * time.Second),
+			ConnectTimeout:    Duration(5 * time.Second),
+			StatementTimeout:  Duration(10 * time.Second),
+			Migration: DatabaseMigration{
+				Enabled: true,
+			},
+		},
 		JobsBuffer:  100,
 		MediaConfig: defaultMediaConfig(),
 		Matching: Matching{
 			Exact: Exact{
-				DBPath: "bastyle.sqlite",
 				Buffer: 500,
 			},
 			ImageHash: ImageHash{
-				DBPath:    "bastyle.sqlite",
 				Threshold: 12,
 				Buffer:    500,
 			},
 			VideoLike: VideoLike{
-				DBPath:           "bastyle.sqlite",
 				Threshold:        12,
 				Buffer:           500,
 				MinMatchedFrames: 2,
@@ -225,7 +248,6 @@ func defaultConfig() Config {
 				ModelName:        "nomic-ai/nomic-embed-vision-v1.5",
 				ModelRevision:    "e3a725bce72db07ca4adb1d83da08903f3ee02f8",
 				Device:           "cpu",
-				DBPath:           "bastyle.sqlite",
 				IndexPath:        "faiss-image.index",
 				MaxFiles:         10,
 				Threshold:        0.92,
@@ -295,14 +317,11 @@ func (c Config) validate() error {
 	if c.JobsBuffer <= 0 {
 		return apperrors.New(methodCtx, "буфер задач должен быть положительным")
 	}
-	if c.Matching.Exact.DBPath == "" {
-		return apperrors.New(methodCtx, "путь к БД exact обязателен")
+	if err := c.Database.validate(); err != nil {
+		return apperrors.Wrap(methodCtx, err)
 	}
 	if c.Matching.Exact.Buffer <= 0 {
 		return apperrors.New(methodCtx, "буфер exact-матчера должен быть положительным")
-	}
-	if c.Matching.ImageHash.DBPath == "" {
-		return apperrors.New(methodCtx, "путь к БД image-hash обязателен")
 	}
 	if c.Matching.ImageHash.Threshold < 0 {
 		return apperrors.New(methodCtx, "порог image-hash не должен быть отрицательным")
@@ -316,9 +335,6 @@ func (c Config) validate() error {
 	if err := c.Matching.AIVector.validate(); err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
-	if c.Matching.VideoLike.DBPath == "" {
-		return apperrors.New(methodCtx, "путь к БД video-like обязателен")
-	}
 	if c.Matching.VideoLike.Threshold < 0 {
 		return apperrors.New(methodCtx, "порог video-like не должен быть отрицательным")
 	}
@@ -328,6 +344,40 @@ func (c Config) validate() error {
 	if err := validateFrameMatchRule("video-like matcher", c.Matching.VideoLike.MinMatchedFrames, c.Matching.VideoLike.MinMatchedRatio); err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
+	return nil
+}
+
+func (c Database) validate() error {
+	const methodCtx = "config/Database.validate"
+
+	if c.DSN == "" {
+		return apperrors.New(methodCtx, "DSN базы данных обязателен")
+	}
+	if c.MaxConns <= 0 {
+		return apperrors.New(methodCtx, "максимальное количество соединений с БД должно быть положительным")
+	}
+	if c.MinConns < 0 {
+		return apperrors.New(methodCtx, "минимальное количество соединений с БД не должно быть отрицательным")
+	}
+	if c.MinConns > c.MaxConns {
+		return apperrors.New(methodCtx, "минимальное количество соединений с БД не должно превышать максимальное")
+	}
+	if c.MaxConnLifetime.Value() <= 0 {
+		return apperrors.New(methodCtx, "время жизни соединения с БД должно быть положительным")
+	}
+	if c.MaxConnIdleTime.Value() <= 0 {
+		return apperrors.New(methodCtx, "время простоя соединения с БД должно быть положительным")
+	}
+	if c.HealthCheckPeriod.Value() <= 0 {
+		return apperrors.New(methodCtx, "период проверки БД должен быть положительным")
+	}
+	if c.ConnectTimeout.Value() <= 0 {
+		return apperrors.New(methodCtx, "таймаут подключения к БД должен быть положительным")
+	}
+	if c.StatementTimeout.Value() <= 0 {
+		return apperrors.New(methodCtx, "таймаут SQL-запроса должен быть положительным")
+	}
+
 	return nil
 }
 
@@ -345,9 +395,6 @@ func (c AIVector) validate() error {
 	}
 	if c.Device == "" {
 		return apperrors.New(methodCtx, "устройство AI-vector обязательно")
-	}
-	if c.DBPath == "" {
-		return apperrors.New(methodCtx, "путь к БД AI-vector обязателен")
 	}
 	if c.IndexPath == "" {
 		return apperrors.New(methodCtx, "путь к индексу AI-vector обязателен")

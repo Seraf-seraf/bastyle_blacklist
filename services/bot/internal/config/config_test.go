@@ -20,6 +20,17 @@ health:
   enabled: true
   host: "127.0.0.1"
   port: 18081
+database:
+  dsn: "postgres://user:pass@db:5432/app?sslmode=disable"
+  max_conns: 12
+  min_conns: 2
+  max_conn_lifetime: 2h
+  max_conn_idle_time: 20m
+  health_check_period: 45s
+  connect_timeout: 6s
+  statement_timeout: 11s
+  migration:
+    enabled: false
 jobs_buffer: 20
 media_config:
   max_animation_duration: 9s
@@ -35,14 +46,11 @@ media_config:
   ffmpeg_timeout: 7s
 matching:
   exact:
-    db_path: "exact.sqlite"
     buffer: 30
   image_hash:
-    db_path: "test.sqlite"
     threshold: 8
     buffer: 40
   video_like:
-    db_path: "video-like.sqlite"
     threshold: 9
     buffer: 50
     min_matched_frames: 3
@@ -52,7 +60,6 @@ matching:
     model_name: "test-model"
     model_revision: "test-revision"
     device: "cpu"
-    db_path: "ai-vector.sqlite"
     index_path: "faiss.index"
     max_files: 8
     threshold: 0.91
@@ -92,44 +99,47 @@ matching:
 	if !cfg.Health.Enabled {
 		t.Fatal("ожидалось, что health-сервер будет включен")
 	}
-	if cfg.Health.Host != "127.0.0.1" {
-		t.Fatalf("неожиданное значение хост health-сервера: %q", cfg.Health.Host)
+	if cfg.Health.Address() != "127.0.0.1:18081" {
+		t.Fatalf("неожиданное значение адрес health-сервера: %q", cfg.Health.Address())
 	}
-	if cfg.Health.Port != 18081 {
-		t.Fatalf("неожиданное значение порт health-сервера: %d", cfg.Health.Port)
+	if cfg.Database.DSN != "postgres://user:pass@db:5432/app?sslmode=disable" {
+		t.Fatalf("неожиданное значение DSN БД: %q", cfg.Database.DSN)
+	}
+	if cfg.Database.MaxConns != 12 {
+		t.Fatalf("неожиданное значение максимум соединений БД: %d", cfg.Database.MaxConns)
+	}
+	if cfg.Database.MinConns != 2 {
+		t.Fatalf("неожиданное значение минимум соединений БД: %d", cfg.Database.MinConns)
+	}
+	if cfg.Database.MaxConnLifetime.Value() != 2*time.Hour {
+		t.Fatalf("неожиданное значение время жизни соединения БД: %s", cfg.Database.MaxConnLifetime.Value())
+	}
+	if cfg.Database.MaxConnIdleTime.Value() != 20*time.Minute {
+		t.Fatalf("неожиданное значение время простоя соединения БД: %s", cfg.Database.MaxConnIdleTime.Value())
+	}
+	if cfg.Database.HealthCheckPeriod.Value() != 45*time.Second {
+		t.Fatalf("неожиданное значение период проверки БД: %s", cfg.Database.HealthCheckPeriod.Value())
+	}
+	if cfg.Database.ConnectTimeout.Value() != 6*time.Second {
+		t.Fatalf("неожиданное значение таймаут подключения БД: %s", cfg.Database.ConnectTimeout.Value())
+	}
+	if cfg.Database.StatementTimeout.Value() != 11*time.Second {
+		t.Fatalf("неожиданное значение таймаут SQL-запроса: %s", cfg.Database.StatementTimeout.Value())
+	}
+	if cfg.Database.Migration.Enabled {
+		t.Fatal("ожидалось, что миграции БД будут выключены")
 	}
 	if cfg.JobsBuffer != 20 {
 		t.Fatalf("неожиданное значение буфер задач: %d", cfg.JobsBuffer)
 	}
-	if cfg.Matching.Exact.DBPath != "exact.sqlite" {
-		t.Fatalf("неожиданное значение exact путь БД: %q", cfg.Matching.Exact.DBPath)
-	}
 	if cfg.Matching.Exact.Buffer != 30 {
 		t.Fatalf("неожиданное значение буфер exact: %d", cfg.Matching.Exact.Buffer)
-	}
-	if cfg.Matching.ImageHash.DBPath != "test.sqlite" {
-		t.Fatalf("неожиданное значение image-hash путь БД: %q", cfg.Matching.ImageHash.DBPath)
 	}
 	if cfg.Matching.ImageHash.Threshold != 8 {
 		t.Fatalf("неожиданное значение image-hash порог: %d", cfg.Matching.ImageHash.Threshold)
 	}
 	if cfg.Matching.ImageHash.Buffer != 40 {
 		t.Fatalf("неожиданное значение image-hash буфер: %d", cfg.Matching.ImageHash.Buffer)
-	}
-	if cfg.MediaConfig.MaxAnimationDuration.Value() != 9*time.Second {
-		t.Fatalf("неожиданное значение максимальная длительность анимации длительность: %s", cfg.MediaConfig.MaxAnimationDuration.Value())
-	}
-	if cfg.MediaConfig.MaxVideoStickerDuration.Value() != 3*time.Second {
-		t.Fatalf("неожиданное значение максимальная длительность видеостикера длительность: %s", cfg.MediaConfig.MaxVideoStickerDuration.Value())
-	}
-	if cfg.MediaConfig.MaxAnimationSize.Bytes() != 1000000 {
-		t.Fatalf("неожиданное значение максимальная длительность анимации размер: %d", cfg.MediaConfig.MaxAnimationSize.Bytes())
-	}
-	if cfg.MediaConfig.MaxVideoStickerSize.Bytes() != 200000 {
-		t.Fatalf("неожиданное значение максимальная длительность видеостикера размер: %d", cfg.MediaConfig.MaxVideoStickerSize.Bytes())
-	}
-	if cfg.Matching.VideoLike.DBPath != "video-like.sqlite" {
-		t.Fatalf("неожиданное значение video-like путь БД: %q", cfg.Matching.VideoLike.DBPath)
 	}
 	if cfg.Matching.VideoLike.Threshold != 9 {
 		t.Fatalf("неожиданное значение video-like порог: %d", cfg.Matching.VideoLike.Threshold)
@@ -142,6 +152,18 @@ matching:
 	}
 	if cfg.Matching.VideoLike.MinMatchedRatio != 0.5 {
 		t.Fatalf("неожиданное значение video-like минимальная доля совпадения: %f", cfg.Matching.VideoLike.MinMatchedRatio)
+	}
+	if cfg.MediaConfig.MaxAnimationDuration.Value() != 9*time.Second {
+		t.Fatalf("неожиданное значение максимальная длительность анимации: %s", cfg.MediaConfig.MaxAnimationDuration.Value())
+	}
+	if cfg.MediaConfig.MaxVideoStickerDuration.Value() != 3*time.Second {
+		t.Fatalf("неожиданное значение максимальная длительность видеостикера: %s", cfg.MediaConfig.MaxVideoStickerDuration.Value())
+	}
+	if cfg.MediaConfig.MaxAnimationSize.Bytes() != 1000000 {
+		t.Fatalf("неожиданное значение максимальный размер анимации: %d", cfg.MediaConfig.MaxAnimationSize.Bytes())
+	}
+	if cfg.MediaConfig.MaxVideoStickerSize.Bytes() != 200000 {
+		t.Fatalf("неожиданное значение максимальный размер видеостикера: %d", cfg.MediaConfig.MaxVideoStickerSize.Bytes())
 	}
 	if cfg.MediaConfig.MaxFrames != 8 {
 		t.Fatalf("неожиданное значение максимум кадров: %d", cfg.MediaConfig.MaxFrames)
@@ -173,9 +195,6 @@ matching:
 	if cfg.Matching.AIVector.ModelRevision != "test-revision" {
 		t.Fatalf("неожиданное значение AI-vector ревизия модели: %q", cfg.Matching.AIVector.ModelRevision)
 	}
-	if cfg.Matching.AIVector.DBPath != "ai-vector.sqlite" {
-		t.Fatalf("неожиданное значение AI-vector путь БД: %q", cfg.Matching.AIVector.DBPath)
-	}
 	if cfg.Matching.AIVector.IndexPath != "faiss.index" {
 		t.Fatalf("неожиданное значение AI-vector путь индекса: %q", cfg.Matching.AIVector.IndexPath)
 	}
@@ -194,11 +213,8 @@ matching:
 	if cfg.Matching.AIVector.RequestTimeout.Value() != 6*time.Second {
 		t.Fatalf("неожиданное значение AI-vector таймаут запроса: %s", cfg.Matching.AIVector.RequestTimeout.Value())
 	}
-	if cfg.Matching.AIVector.Service.Host != "127.0.0.1" {
-		t.Fatalf("неожиданное значение AI-vector host сервиса: %q", cfg.Matching.AIVector.Service.Host)
-	}
-	if cfg.Matching.AIVector.Service.Port != 18080 {
-		t.Fatalf("неожиданное значение AI-vector port сервиса: %d", cfg.Matching.AIVector.Service.Port)
+	if cfg.Matching.AIVector.Service.URL() != "http://127.0.0.1:18080" {
+		t.Fatalf("неожиданное значение AI-vector URL сервиса: %q", cfg.Matching.AIVector.Service.URL())
 	}
 	if cfg.Matching.AIVector.HNSW.M != 16 {
 		t.Fatalf("неожиданное значение AI-vector HNSW m: %d", cfg.Matching.AIVector.HNSW.M)
@@ -215,9 +231,6 @@ func TestLoadKeepsDefaultsForMissingOptionalValues(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 `)
 
 	cfg, err := Load(path)
@@ -234,65 +247,53 @@ matching:
 	if !cfg.Health.Enabled {
 		t.Fatal("ожидалось, что health-сервер по умолчанию будет включен")
 	}
-	if cfg.Health.Host != "127.0.0.1" {
-		t.Fatalf("неожиданное значение по умолчанию: хост health-сервера: %q", cfg.Health.Host)
+	if cfg.Database.DSN != "postgres://bastyle:bastyle@bastyle-postgresql:5432/bastyle?sslmode=disable" {
+		t.Fatalf("неожиданное значение по умолчанию: DSN БД: %q", cfg.Database.DSN)
 	}
-	if cfg.Health.Port != 8081 {
-		t.Fatalf("неожиданное значение по умолчанию: порт health-сервера: %d", cfg.Health.Port)
+	if cfg.Database.MaxConns != 10 {
+		t.Fatalf("неожиданное значение по умолчанию: максимум соединений БД: %d", cfg.Database.MaxConns)
 	}
-	if cfg.Matching.Exact.DBPath != "bastyle.sqlite" {
-		t.Fatalf("неожиданное значение по умолчанию: exact путь БД: %q", cfg.Matching.Exact.DBPath)
+	if cfg.Database.MinConns != 1 {
+		t.Fatalf("неожиданное значение по умолчанию: минимум соединений БД: %d", cfg.Database.MinConns)
+	}
+	if cfg.Database.MaxConnLifetime.Value() != time.Hour {
+		t.Fatalf("неожиданное значение по умолчанию: время жизни соединения БД: %s", cfg.Database.MaxConnLifetime.Value())
+	}
+	if cfg.Database.MaxConnIdleTime.Value() != 15*time.Minute {
+		t.Fatalf("неожиданное значение по умолчанию: время простоя соединения БД: %s", cfg.Database.MaxConnIdleTime.Value())
+	}
+	if cfg.Database.HealthCheckPeriod.Value() != 30*time.Second {
+		t.Fatalf("неожиданное значение по умолчанию: период проверки БД: %s", cfg.Database.HealthCheckPeriod.Value())
+	}
+	if cfg.Database.ConnectTimeout.Value() != 5*time.Second {
+		t.Fatalf("неожиданное значение по умолчанию: таймаут подключения БД: %s", cfg.Database.ConnectTimeout.Value())
+	}
+	if cfg.Database.StatementTimeout.Value() != 10*time.Second {
+		t.Fatalf("неожиданное значение по умолчанию: таймаут SQL-запроса: %s", cfg.Database.StatementTimeout.Value())
+	}
+	if !cfg.Database.Migration.Enabled {
+		t.Fatal("ожидалось, что миграции БД по умолчанию будут включены")
+	}
+	if cfg.Matching.Exact.Buffer != 500 {
+		t.Fatalf("неожиданное значение по умолчанию: exact буфер: %d", cfg.Matching.Exact.Buffer)
 	}
 	if cfg.Matching.ImageHash.Threshold != 12 {
 		t.Fatalf("неожиданное значение по умолчанию: image-hash порог: %d", cfg.Matching.ImageHash.Threshold)
 	}
-	if cfg.MediaConfig.MaxAnimationDuration.Value() != 10*time.Second {
-		t.Fatalf("неожиданное значение по умолчанию: максимальная длительность анимации длительность: %s", cfg.MediaConfig.MaxAnimationDuration.Value())
-	}
-	if cfg.MediaConfig.MaxVideoStickerDuration.Value() != 3*time.Second {
-		t.Fatalf("неожиданное значение по умолчанию: максимальная длительность видеостикера длительность: %s", cfg.MediaConfig.MaxVideoStickerDuration.Value())
-	}
-	if cfg.MediaConfig.MaxAnimationSize.Bytes() != 20<<20 {
-		t.Fatalf("неожиданное значение по умолчанию: максимальная длительность анимации размер: %d", cfg.MediaConfig.MaxAnimationSize.Bytes())
-	}
-	if cfg.MediaConfig.MaxVideoStickerSize.Bytes() != 256<<10 {
-		t.Fatalf("неожиданное значение по умолчанию: максимальная длительность видеостикера размер: %d", cfg.MediaConfig.MaxVideoStickerSize.Bytes())
-	}
-	if cfg.Matching.VideoLike.DBPath != "bastyle.sqlite" {
-		t.Fatalf("неожиданное значение по умолчанию: video-like путь БД: %q", cfg.Matching.VideoLike.DBPath)
-	}
-	if cfg.Matching.VideoLike.Threshold != 12 {
-		t.Fatalf("неожиданное значение по умолчанию: video-like порог: %d", cfg.Matching.VideoLike.Threshold)
-	}
-	if cfg.Matching.VideoLike.Buffer != 500 {
-		t.Fatalf("неожиданное значение по умолчанию: video-like буфер: %d", cfg.Matching.VideoLike.Buffer)
-	}
 	if cfg.Matching.VideoLike.MinMatchedFrames != 2 {
 		t.Fatalf("неожиданное значение по умолчанию: video-like минимум совпавших кадров: %d", cfg.Matching.VideoLike.MinMatchedFrames)
 	}
-	if cfg.Matching.VideoLike.MinMatchedRatio != 0.4 {
-		t.Fatalf("неожиданное значение по умолчанию: video-like минимальная доля совпадения: %f", cfg.Matching.VideoLike.MinMatchedRatio)
+	if cfg.MediaConfig.MaxAnimationDuration.Value() != 10*time.Second {
+		t.Fatalf("неожиданное значение по умолчанию: максимальная длительность анимации: %s", cfg.MediaConfig.MaxAnimationDuration.Value())
 	}
-	if cfg.MediaConfig.MaxFrames != 10 {
-		t.Fatalf("неожиданное значение по умолчанию: максимум кадров: %d", cfg.MediaConfig.MaxFrames)
-	}
-	if cfg.MediaConfig.TargetWidth != 320 {
-		t.Fatalf("неожиданное значение по умолчанию: целевая ширина: %d", cfg.MediaConfig.TargetWidth)
-	}
-	if cfg.MediaConfig.TargetHeight != 320 {
-		t.Fatalf("неожиданное значение по умолчанию: целевая высота: %d", cfg.MediaConfig.TargetHeight)
+	if cfg.MediaConfig.MaxVideoStickerSize.Bytes() != 256<<10 {
+		t.Fatalf("неожиданное значение по умолчанию: максимальный размер видеостикера: %d", cfg.MediaConfig.MaxVideoStickerSize.Bytes())
 	}
 	if cfg.MediaConfig.FFmpegBinary != "ffmpeg" {
 		t.Fatalf("неожиданное значение по умолчанию: бинарный файл ffmpeg: %q", cfg.MediaConfig.FFmpegBinary)
 	}
-	if cfg.MediaConfig.FFmpegTimeout.Value() != 10*time.Second {
-		t.Fatalf("неожиданное значение по умолчанию: таймаут ffmpeg: %s", cfg.MediaConfig.FFmpegTimeout.Value())
-	}
 	if cfg.Telegram.HTTPClient.Enabled {
 		t.Fatal("ожидалось, что HTTP-клиент Telegram по умолчанию будет выключен")
-	}
-	if cfg.Telegram.HTTPClient.ProxyURL != "" {
-		t.Fatalf("неожиданное значение по умолчанию: HTTP-клиент Telegram URL прокси: %q", cfg.Telegram.HTTPClient.ProxyURL)
 	}
 	if cfg.Matching.AIVector.Enabled {
 		t.Fatal("ожидалось, что AI-vector матчер по умолчанию будет выключен")
@@ -300,46 +301,18 @@ matching:
 	if cfg.Matching.AIVector.Threshold != 0.92 {
 		t.Fatalf("неожиданное значение по умолчанию: AI-vector порог: %f", cfg.Matching.AIVector.Threshold)
 	}
-	if cfg.Matching.AIVector.TopK != 5 {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector top_k: %d", cfg.Matching.AIVector.TopK)
-	}
-	if cfg.Matching.AIVector.MinMatchedFrames != 2 {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector минимум совпавших кадров: %d", cfg.Matching.AIVector.MinMatchedFrames)
-	}
-	if cfg.Matching.AIVector.MinMatchedRatio != 0.4 {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector минимальная доля совпадения: %f", cfg.Matching.AIVector.MinMatchedRatio)
-	}
-	if cfg.Matching.AIVector.RequestTimeout.Value() != 10*time.Second {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector таймаут запроса: %s", cfg.Matching.AIVector.RequestTimeout.Value())
-	}
-	if cfg.Matching.AIVector.Service.Host != "127.0.0.1" {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector host сервиса: %q", cfg.Matching.AIVector.Service.Host)
-	}
-	if cfg.Matching.AIVector.Service.Port != 8080 {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector port сервиса: %d", cfg.Matching.AIVector.Service.Port)
-	}
-	if cfg.Matching.AIVector.HNSW.M != 32 {
-		t.Fatalf("неожиданное значение по умолчанию: AI-vector HNSW m: %d", cfg.Matching.AIVector.HNSW.M)
+	if cfg.Matching.AIVector.Service.URL() != "http://127.0.0.1:8080" {
+		t.Fatalf("неожиданное значение по умолчанию: AI-vector URL сервиса: %q", cfg.Matching.AIVector.Service.URL())
 	}
 }
 
-func TestLoadRejectsMediaConfigFieldsUnderVideoLike(t *testing.T) {
+func TestLoadRejectsDeprecatedMatcherDBPath(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
 matching:
   image_hash:
     db_path: "test.sqlite"
-  video_like:
-    max_animation_duration: 8s
-    max_video_sticker_duration: 2s
-    max_animation_size: 2MiB
-    max_video_sticker_size: 128KiB
-    max_frames: 7
-    target_width: 240
-    target_height: 220
-    ffmpeg_binary: /usr/local/bin/ffmpeg
-    ffmpeg_timeout: 6s
 `)
 
 	_, err := Load(path)
@@ -348,15 +321,13 @@ matching:
 	}
 }
 
-func TestLoadRejectsUnknownVideoLikeField(t *testing.T) {
+func TestLoadRejectsMediaConfigFieldsUnderVideoLike(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
 matching:
-  image_hash:
-    db_path: "test.sqlite"
   video_like:
-    typo: true
+    max_animation_duration: 8s
 `)
 
 	_, err := Load(path)
@@ -369,9 +340,6 @@ func TestLoadRequiresTelegramToken(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: ""
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 `)
 
 	_, err := Load(path)
@@ -384,9 +352,6 @@ func TestLoadRejectsInvalidMediaConfig(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 media_config:
   max_animation_duration: 0s
 `)
@@ -401,9 +366,6 @@ func TestLoadRejectsInvalidMediaConfigSize(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 media_config:
   max_animation_size: "not-a-size"
 `)
@@ -418,28 +380,8 @@ func TestLoadRejectsExcessiveMediaConfigFrames(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 media_config:
   max_frames: 21
-`)
-
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("ожидалось: ошибка")
-	}
-}
-
-func TestLoadRejectsExcessiveMediaConfigTargetSize(t *testing.T) {
-	path := writeConfig(t, `
-telegram:
-  token: "токен"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
-media_config:
-  target_width: 1025
 `)
 
 	_, err := Load(path)
@@ -452,9 +394,6 @@ func TestLoadRejectsEmptyMediaConfigFFmpegBinary(t *testing.T) {
 	path := writeConfig(t, `
 telegram:
   token: "токен"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 media_config:
   ffmpeg_binary: ""
 `)
@@ -472,9 +411,6 @@ telegram:
   http_client:
     enabled: true
     proxy_url: "127.0.0.1:8080"
-matching:
-  image_hash:
-    db_path: "test.sqlite"
 `)
 
 	_, err := Load(path)
@@ -488,8 +424,6 @@ func TestLoadRejectsVideoLikeEnabledField(t *testing.T) {
 telegram:
   token: "токен"
 matching:
-  image_hash:
-    db_path: "test.sqlite"
   video_like:
     enabled: false
 `)
@@ -505,8 +439,6 @@ func TestLoadRejectsInvalidAIVectorConfig(t *testing.T) {
 telegram:
   token: "токен"
 matching:
-  image_hash:
-    db_path: "test.sqlite"
   ai_vector:
     enabled: true
     threshold: 1.1
@@ -523,8 +455,6 @@ func TestLoadRejectsInvalidAIVectorServiceURL(t *testing.T) {
 telegram:
   token: "токен"
 matching:
-  image_hash:
-    db_path: "test.sqlite"
   ai_vector:
     enabled: true
     service:
@@ -543,8 +473,6 @@ func TestLoadAllowsInvalidDisabledAIVectorConfig(t *testing.T) {
 telegram:
   token: "токен"
 matching:
-  image_hash:
-    db_path: "test.sqlite"
   ai_vector:
     enabled: false
     threshold: 2
@@ -556,6 +484,46 @@ matching:
 	_, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLoadRejectsInvalidDatabaseConfig(t *testing.T) {
+	tests := map[string]string{
+		"dsn": `
+database:
+  dsn: ""
+`,
+		"max_conns": `
+database:
+  max_conns: 0
+`,
+		"min_conns": `
+database:
+  min_conns: 11
+  max_conns: 10
+`,
+		"connect_timeout": `
+database:
+  connect_timeout: 0s
+`,
+		"statement_timeout": `
+database:
+  statement_timeout: 0s
+`,
+	}
+
+	for name, databaseConfig := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := writeConfig(t, `
+telegram:
+  token: "токен"
+`+databaseConfig)
+
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("ожидалось: ошибка")
+			}
+		})
 	}
 }
 

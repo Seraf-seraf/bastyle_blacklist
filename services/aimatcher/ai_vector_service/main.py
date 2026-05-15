@@ -20,7 +20,7 @@ app = create_app(
             settings.device,
         ),
         vectors=VectorIndexService(
-            store=SQLiteVectorStore(settings.db_path),
+            store=SQLiteVectorStore(settings.database.dsn),
             model_name=settings.model_name,
             model_revision=settings.model_revision,
             index_path=settings.index_path,
