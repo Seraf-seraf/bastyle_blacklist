@@ -35,7 +35,7 @@ app = create_app(
 
 
 def main() -> None:
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    uvicorn.run(app, host=settings.host, port=settings.port, timeout_graceful_shutdown=30)
 
 
 if __name__ == "__main__":

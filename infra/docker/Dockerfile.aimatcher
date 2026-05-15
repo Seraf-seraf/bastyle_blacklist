@@ -13,7 +13,6 @@ RUN apt-get update \
 COPY services/aimatcher/ai_vector_service/requirements.txt ./requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip \
-	&& pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.9.1 torchvision==0.24.1 \
 	&& pip install --no-cache-dir -r requirements.txt
 
 RUN huggingface-cli download nomic-ai/nomic-embed-vision-v1.5 --revision e3a725bce72db07ca4adb1d83da08903f3ee02f8 \

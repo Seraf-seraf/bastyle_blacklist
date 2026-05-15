@@ -179,6 +179,18 @@ health:
   host: "127.0.0.1"
   port: 8081
 
+database:
+  dsn: "postgres://bastyle:bastyle@bastyle-postgresql:5432/bastyle?sslmode=disable"
+  max_conns: 10
+  min_conns: 1
+  max_conn_lifetime: 1h
+  max_conn_idle_time: 15m
+  health_check_period: 30s
+  connect_timeout: 5s
+  statement_timeout: 10s
+  migration:
+    enabled: true
+
 media_config:
   max_animation_duration: 10s
   max_video_sticker_duration: 3s
@@ -197,12 +209,10 @@ matching:
     buffer: 500
 
   image_hash:
-    db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
 
   video_like:
-    db_path: "bastyle.sqlite"
     threshold: 12
     buffer: 500
     min_matched_frames: 2
@@ -213,7 +223,6 @@ matching:
     model_name: "nomic-ai/nomic-embed-vision-v1.5"
     model_revision: "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
     device: "cpu"
-    db_path: "bastyle.sqlite"
     index_path: "faiss-image.index"
     max_files: 10
     threshold: 0.92
@@ -242,17 +251,20 @@ matching:
 `jobs_buffer` - размер очереди сообщений.
 `health.enabled` - включает HTTP health endpoint.
 `health.host` и `health.port` - host/port для health endpoint.
+`database.dsn` - PostgreSQL DSN для Go-бота и AI-сервиса.
+`database.max_conns` и `min_conns` - лимиты пула соединений PostgreSQL.
+`database.max_conn_lifetime`, `max_conn_idle_time`, `health_check_period`,
+`connect_timeout` и `statement_timeout` - таймауты PostgreSQL client/pool.
+`database.migration.enabled` - включает запуск миграций там, где это явно
+поддержано инфраструктурой.
 
 `matching.exact.buffer` - стартовый размер черного списка по `file_unique_id` в памяти приложения.
-`matching.image_hash.db_path` - SQLite-файл для хэшей картинок.
 `matching.image_hash.threshold` - максимальная Hamming distance для похожих изображений.
 `media_config.*` - общие лимиты и FFmpeg-настройки для кадров, которые
 используют матчеры `video_like` и `ai_vector`.
-`matching.video_like.db_path` - SQLite-файл для video-like отпечатков.
 `matching.video_like.min_matched_frames` и `min_matched_ratio` - правило
 долю совпадения кадров для video-like hash матчера.
 `matching.ai_vector.enabled` - включает или отключает AI vector матчер.
-`matching.ai_vector.db_path` - SQLite-файл для AI-vector ban'ов.
 `matching.ai_vector.index_path` - файл Faiss HNSW индекса.
 `matching.ai_vector.threshold` - минимальный cosine similarity score.
 `matching.ai_vector.top_k` - сколько ближайших векторов запрашивать у AI service.
@@ -296,16 +308,15 @@ docker run --rm \
   bastyle-blacklist:1.2.0
 ```
 
-Для Docker удобно указывать SQLite-файл внутри `/var/lib/bastyle`:
+Для Docker укажите PostgreSQL DSN в config. Локальный volume `/var/lib/bastyle`
+остается для производных runtime-данных, например FAISS index:
 
 ```yaml
+database:
+  dsn: "postgres://bastyle:bastyle@bastyle-postgresql:5432/bastyle?sslmode=disable"
+
 matching:
-  image_hash:
-    db_path: "/var/lib/bastyle/bastyle.sqlite"
-  video_like:
-    db_path: "/var/lib/bastyle/bastyle.sqlite"
   ai_vector:
-    db_path: "/var/lib/bastyle/bastyle.sqlite"
     index_path: "/var/lib/bastyle/faiss-image.index"
 ```
 
@@ -326,8 +337,12 @@ make down
 
 Compose монтирует config в `/etc/bastyle/config.yaml` для Go-бота, в
 `/app/infra/config/config.yaml` для AI-сервиса и общий volume `/var/lib/bastyle` для
-SQLite, Faiss index и runtime-данных. Контейнер Go-бота ограничен `512m`
+Faiss index и runtime-данных. Контейнер Go-бота ограничен `512m`
 памяти, контейнер `bastyle-aimatcher` - `2g`.
+
+`bastyle-aimatcher` - внутренний сервис. Его HTTP endpoint должен быть доступен
+только Go-боту внутри приватной сети Compose/Kubernetes и не должен
+публиковаться наружу через public ports, ingress или gateway.
 
 ## Systemd
 
@@ -347,16 +362,15 @@ sudo install -d -o root -g root -m 0755 /etc/bastyle
 sudo install -o root -g root -m 0640 infra/config/config.example.yaml /etc/bastyle/config.yaml
 ```
 
-В `/etc/bastyle/config.yaml` укажите Telegram token и пути к SQLite:
+В `/etc/bastyle/config.yaml` укажите Telegram token, PostgreSQL DSN и путь к
+производному FAISS index:
 
 ```yaml
+database:
+  dsn: "postgres://bastyle:bastyle@postgres.example:5432/bastyle?sslmode=require"
+
 matching:
-  image_hash:
-    db_path: "/var/lib/bastyle/bastyle.sqlite"
-  video_like:
-    db_path: "/var/lib/bastyle/bastyle.sqlite"
   ai_vector:
-    db_path: "/var/lib/bastyle/bastyle.sqlite"
     index_path: "/var/lib/bastyle/faiss-image.index"
 ```
 

@@ -225,7 +225,15 @@ func main() {
 	}
 
 	for update := range updates {
-		jobs <- Job{Update: update}
+		select {
+		case <-ctx.Done():
+			log.Println("Остановка приема обновлений")
+			close(jobs)
+			wg.Wait()
+			log.Println("Завершение работы выполнено")
+			return
+		case jobs <- Job{Update: update}:
+		}
 	}
 
 	close(jobs)
@@ -298,15 +306,24 @@ type moderationService interface {
 func worker(ctx context.Context, jobs <-chan Job, service moderationService) {
 	const methodCtx = "cmd/worker"
 
-	for job := range jobs {
-		msg := job.Update.Message
-		if msg == nil {
-			continue
-		}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job, ok := <-jobs:
+			if !ok {
+				return
+			}
 
-		message := telegram.MessageFromTelegram(msg)
-		if err := service.HandleMessage(ctx, message); err != nil {
-			logError(methodCtx, err)
+			msg := job.Update.Message
+			if msg == nil {
+				continue
+			}
+
+			message := telegram.MessageFromTelegram(msg)
+			if err := service.HandleMessage(ctx, message); err != nil {
+				logError(methodCtx, err)
+			}
 		}
 	}
 }
