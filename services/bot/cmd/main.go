@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/database/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/httpclient"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/aivector"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
@@ -46,6 +47,14 @@ func main() {
 	if err != nil {
 		panicWithContext(methodCtx, err)
 	}
+	dbPool, err := postgres.NewPool(ctx, cfg.Database)
+	if err != nil {
+		panicWithContext(methodCtx, err)
+	}
+	defer func() {
+		dbPool.Close()
+		log.Println("PostgreSQL pool закрыт")
+	}()
 
 	bot, err := newTelegramBot(cfg)
 	if err != nil {
@@ -200,7 +209,7 @@ func main() {
 	}
 
 	if cfg.Health.Enabled {
-		healthServer, err := startHealthServer(ctx, cfg.Health.Address())
+		healthServer, err := startHealthServer(ctx, cfg.Health.Address(), dbPool.Ping)
 		if err != nil {
 			panicWithContext(methodCtx, err)
 		}
@@ -241,7 +250,9 @@ func main() {
 	log.Println("Завершение работы выполнено")
 }
 
-func startHealthServer(ctx context.Context, address string) (*http.Server, error) {
+type readinessCheck func(context.Context) error
+
+func startHealthServer(ctx context.Context, address string, readiness readinessCheck) (*http.Server, error) {
 	const methodCtx = "cmd/startHealthServer"
 
 	mux := http.NewServeMux()
@@ -249,6 +260,28 @@ func startHealthServer(ctx context.Context, address string) (*http.Server, error
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		if readiness == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"ready"}`))
+			return
+		}
+
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		if err := readiness(checkCtx); err != nil {
+			logError(methodCtx, err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"not_ready"}`))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
 	})
 
 	listener, err := net.Listen("tcp", address)
