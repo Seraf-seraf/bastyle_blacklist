@@ -4,7 +4,6 @@ import (
 	"context"
 	"image"
 	"image/color"
-	"path/filepath"
 	"testing"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
@@ -44,7 +43,7 @@ func TestMatcherBlocksSameWhiteImageBackgroundWithDifferentFileID(t *testing.T) 
 		Type:         domain.MediaPhoto,
 	}
 
-	matcher := newTestSQLiteMatcher(t, ctx, fakeDownloader{}, fakeExtractor{
+	matcher := newTestMatcherWithStore(t, fakeDownloader{}, fakeExtractor{
 		images: map[string]image.Image{
 			blockedContent.FileID:   solidImage(128, 128, color.White),
 			candidateContent.FileID: solidImage(320, 240, color.White),
@@ -81,7 +80,7 @@ func TestMatcherBlocksRotatedImageWithPerceptionHashVariants(t *testing.T) {
 	blockedImage := patternImage()
 	candidateImage := imaging.Rotate180(blockedImage)
 
-	matcher := newTestSQLiteMatcher(t, ctx, fakeDownloader{}, fakeExtractor{
+	matcher := newTestMatcherWithStore(t, fakeDownloader{}, fakeExtractor{
 		images: map[string]image.Image{
 			blockedContent.FileID:   blockedImage,
 			candidateContent.FileID: candidateImage,
@@ -142,21 +141,48 @@ func TestNewMatcherRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader fakeDownloader, extractor fakeExtractor, threshold int, buffer int) *matcher {
+func newTestMatcherWithStore(t *testing.T, downloader fakeDownloader, extractor fakeExtractor, threshold int, buffer int) *matcher {
 	t.Helper()
 
-	matcher, err := NewSQLiteMatcher(ctx, downloader, extractor, threshold, buffer, filepath.Join(t.TempDir(), "imagehash.sqlite"))
+	matcher, err := NewMatcher(downloader, extractor, threshold, buffer)
 	if err != nil {
-		t.Fatalf("создание SQLite-матчера: %v", err)
+		t.Fatalf("создание imagehash-матчера: %v", err)
 	}
+	matcher.store = &memoryImageHashStore{}
 
 	t.Cleanup(func() {
 		if err := matcher.Close(); err != nil {
-			t.Fatalf("закрытие SQLite-матчера: %v", err)
+			t.Fatalf("закрытие imagehash-матчера: %v", err)
 		}
 	})
 
 	return matcher
+}
+
+type memoryImageHashStore struct {
+	hashes []StoredImageHash
+	nextID int64
+}
+
+func (s *memoryImageHashStore) load(context.Context) ([]StoredImageHash, error) {
+	return append([]StoredImageHash(nil), s.hashes...), nil
+}
+
+func (s *memoryImageHashStore) insert(_ context.Context, hash StoredImageHash) (int64, error) {
+	signature := imageHashIndexSignature(hash)
+	for _, stored := range s.hashes {
+		if imageHashIndexSignature(stored) == signature {
+			return stored.ID, nil
+		}
+	}
+	s.nextID++
+	hash.ID = s.nextID
+	s.hashes = append(s.hashes, hash)
+	return hash.ID, nil
+}
+
+func (s *memoryImageHashStore) close() error {
+	return nil
 }
 
 func solidImage(width int, height int, c color.Color) image.Image {

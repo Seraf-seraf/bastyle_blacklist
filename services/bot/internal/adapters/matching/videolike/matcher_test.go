@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/color"
 	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -347,7 +346,7 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 		},
 	}
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
-	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
+	matcher := newTestMatcherWithStore(t, downloader, extractor, nil)
 
 	err := matcher.Block(ctx, 10, domain.Content{
 		FileID:       "blocked-file",
@@ -388,7 +387,7 @@ func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
 		},
 	}
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
-	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
+	matcher := newTestMatcherWithStore(t, downloader, extractor, nil)
 
 	err := matcher.Block(ctx, 10, domain.Content{
 		FileID:       "blocked-file",
@@ -437,7 +436,7 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 		},
 	}
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
-	matcher := newTestSQLiteMatcher(t, ctx, downloader, extractor)
+	matcher := newTestMatcherWithStore(t, downloader, extractor, nil)
 
 	err := matcher.Block(ctx, 10, domain.Content{
 		FileID:       "blocked-sticker",
@@ -467,12 +466,6 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 
 func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "videolike.sqlite")
-
-	first, err := OpenSQLiteStore(ctx, dbPath)
-	if err != nil {
-		t.Fatalf("открытие SQLite-хранилища: %v", err)
-	}
 	storedFingerprint, err := fingerprintVideoLike(domain.Content{
 		FileUniqueID: "stored-unique",
 		Type:         domain.MediaAnimation,
@@ -487,13 +480,6 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 		t.Fatalf("создание fingerprint для сохраненного хеша: %v", err)
 	}
 	storedFingerprint.ChatID = 10
-	_, err = first.insert(ctx, storedFingerprint)
-	if err != nil {
-		t.Fatalf("вставка сохраненного хеша: %v", err)
-	}
-	if err := first.close(); err != nil {
-		t.Fatalf("закрытие первого хранилища: %v", err)
-	}
 
 	downloader := &fakeDownloader{
 		filePaths: map[string]string{
@@ -510,25 +496,12 @@ func TestMatcherLoadsStoredHashesIntoIndex(t *testing.T) {
 		},
 	}}
 
-	matcher, err := NewSQLiteMatcher(
-		ctx,
+	matcher := newTestMatcherWithStore(
+		t,
 		downloader,
 		extractor,
-		0,
-		1,
-		dbPath,
-		defaultTestPlan(),
-		defaultTestLimits(),
-		MatchRule{MinMatchedFrames: 2, MinMatchedRatio: 1},
+		[]StoredVideoLikeHash{storedFingerprint},
 	)
-	if err != nil {
-		t.Fatalf("создание SQLite-матчера: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := matcher.Close(); err != nil {
-			t.Fatalf("закрытие матчера: %v", err)
-		}
-	})
 
 	blocked, err := matcher.IsBlocked(ctx, 10, domain.Content{
 		FileID:       "query-file",
@@ -602,23 +575,23 @@ func newTestMatcherWithLimits(t *testing.T, downloader *fakeDownloader, limits L
 	return matcher
 }
 
-func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader *fakeDownloader, extractor *fakeExtractor) *matcher {
+func newTestMatcherWithStore(t *testing.T, downloader *fakeDownloader, extractor *fakeExtractor, stored []StoredVideoLikeHash) *matcher {
 	t.Helper()
 
-	matcher, err := NewSQLiteMatcher(
-		ctx,
+	matcher, err := NewMatcher(
 		downloader,
 		extractor,
 		0,
 		1,
-		filepath.Join(t.TempDir(), "videolike.sqlite"),
 		defaultTestPlan(),
 		defaultTestLimits(),
 		MatchRule{MinMatchedFrames: 2, MinMatchedRatio: 1},
 	)
 	if err != nil {
-		t.Fatalf("создание SQLite-матчера: %v", err)
+		t.Fatalf("создание video-like матчера: %v", err)
 	}
+	matcher.store = &memoryVideoLikeStore{hashes: append([]StoredVideoLikeHash(nil), stored...)}
+	matcher.index.AddMany(stored)
 	t.Cleanup(func() {
 		if err := matcher.Close(); err != nil {
 			t.Fatalf("закрытие матчера: %v", err)
@@ -626,6 +599,32 @@ func newTestSQLiteMatcher(t *testing.T, ctx context.Context, downloader *fakeDow
 	})
 
 	return matcher
+}
+
+type memoryVideoLikeStore struct {
+	hashes []StoredVideoLikeHash
+	nextID int64
+}
+
+func (s *memoryVideoLikeStore) load(context.Context) ([]StoredVideoLikeHash, error) {
+	return append([]StoredVideoLikeHash(nil), s.hashes...), nil
+}
+
+func (s *memoryVideoLikeStore) insert(_ context.Context, hash StoredVideoLikeHash) (int64, error) {
+	signature := videoLikeIndexSignature(hash)
+	for _, stored := range s.hashes {
+		if videoLikeIndexSignature(stored) == signature {
+			return stored.ID, nil
+		}
+	}
+	s.nextID++
+	hash.ID = s.nextID
+	s.hashes = append(s.hashes, hash)
+	return hash.ID, nil
+}
+
+func (s *memoryVideoLikeStore) close() error {
+	return nil
 }
 
 func defaultTestPlan() domain.MediaExtractionPlan {

@@ -7,17 +7,29 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type matcher struct {
 	mu      sync.RWMutex
 	blocked map[exactKey]struct{}
-	store   *sqliteStore
+	store   exactStore
 }
 
 type exactKey struct {
 	chatID       int64
 	fileUniqueID string
+}
+
+type exactRecord struct {
+	ChatID       int64
+	FileUniqueID string
+}
+
+type exactStore interface {
+	load(context.Context) ([]exactRecord, error)
+	insert(context.Context, int64, domain.MediaType, string) error
+	close() error
 }
 
 func newMatcher(buffer int) (*matcher, error) {
@@ -30,27 +42,22 @@ func newMatcher(buffer int) (*matcher, error) {
 	return &matcher{blocked: make(map[exactKey]struct{}, buffer)}, nil
 }
 
-func NewSQLiteMatcher(ctx context.Context, buffer int, dbPath string) (*matcher, error) {
-	const methodCtx = "exact/NewSQLiteMatcher"
+func NewPostgresMatcher(ctx context.Context, pool *pgxpool.Pool, buffer int) (*matcher, error) {
+	const methodCtx = "exact/NewPostgresMatcher"
 
-	if dbPath == "" {
-		return nil, apperrors.New(methodCtx, "путь к БД exact-матчера не настроен")
+	if pool == nil {
+		return nil, apperrors.New(methodCtx, "PostgreSQL pool exact-матчера не настроен")
 	}
 
-	store, err := OpenSQLiteStore(ctx, dbPath)
-	if err != nil {
-		return nil, apperrors.Wrap(methodCtx, err)
-	}
+	store := NewPostgresStore(pool)
 
 	stored, err := store.load(ctx)
 	if err != nil {
-		_ = store.close()
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	matcher, err := newMatcher(buffer + len(stored))
 	if err != nil {
-		_ = store.close()
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	matcher.store = store
@@ -93,7 +100,7 @@ func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Conten
 		return apperrors.New(methodCtx, "хранилище exact не настроено")
 	}
 
-	if err := m.store.insert(ctx, chatID, content.FileUniqueID); err != nil {
+	if err := m.store.insert(ctx, chatID, content.Type, content.FileUniqueID); err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
 

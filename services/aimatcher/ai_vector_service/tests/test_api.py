@@ -14,7 +14,7 @@ from ai_vector_service.api import (
 )
 from ai_vector_service.images import PillowImageDecoder
 from ai_vector_service.model import EmbeddingResult
-from ai_vector_service.storage import SQLiteVectorStore
+from ai_vector_service.storage import InsertBanResult, StoredVectorFrame, VectorBan
 
 
 class FakeModel:
@@ -212,7 +212,7 @@ def test_vector_index_service_deactivates_ban_when_index_update_fails(tmp_path):
         def add_ban(self, ban):
             raise RuntimeError("обновление индекса завершилось ошибкой")
 
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     service = VectorIndexService(
         store=store,
         model_name="fake-model",
@@ -244,6 +244,57 @@ def test_vector_index_service_deactivates_ban_when_index_update_fails(tmp_path):
         assert active_bans == []
         assert service._index is None
         assert service._dimension is None
+    finally:
+        store.close()
+
+
+def test_vector_index_service_keeps_existing_ban_active_when_duplicate_index_update_fails(tmp_path):
+    class FailingIndex:
+        def validate_vectors(self, vectors):
+            return None
+
+        def add_ban(self, ban):
+            raise RuntimeError("повторное обновление индекса завершилось ошибкой")
+
+        def save(self, **kwargs):
+            return None
+
+    store = MemoryVectorStore()
+    first_ban_id = store.insert_ban(
+        chat_id=10,
+        file_unique_id="file-unique-id",
+        media_type="photo",
+        model_name="fake-model",
+        model_revision="fake-revision",
+        vector_dim=3,
+        frames=[MemoryVectorFrame(frame_index=0, position_millis=0, vector=[1.0, 0.0, 0.0])],
+    )
+    store.return_existing = True
+    service = VectorIndexService(
+        store=store,
+        model_name="fake-model",
+        model_revision="fake-revision",
+        index_path=str(tmp_path / "faiss.index"),
+    )
+    service._index = FailingIndex()
+    service._dimension = 3
+
+    try:
+        ban_id = service.add_ban(
+            chat_id=10,
+            file_unique_id="file-unique-id",
+            media_type="photo",
+            frames=[FrameEmbedding(frame_index=0, vector=[1.0, 0.0, 0.0])],
+            dimension=3,
+        )
+
+        assert ban_id == first_ban_id
+        active_bans = store.load_active_bans(
+            model_name="fake-model",
+            model_revision="fake-revision",
+            vector_dim=3,
+        )
+        assert [ban.id for ban in active_bans] == [first_ban_id]
     finally:
         store.close()
 
@@ -284,3 +335,102 @@ def test_ban_requires_vector_service():
 
     assert response.status_code == 503
     assert response.json()["detail"] == "сервис векторного индекса не настроен"
+
+
+class MemoryVectorStore:
+    def __init__(self):
+        self.bans = []
+        self.next_ban_id = 0
+        self.next_frame_id = 0
+        self.return_existing = False
+
+    def close(self):
+        return None
+
+    def insert_ban(self, *, chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames):
+        return self.insert_ban_result(
+            chat_id=chat_id,
+            file_unique_id=file_unique_id,
+            media_type=media_type,
+            model_name=model_name,
+            model_revision=model_revision,
+            vector_dim=vector_dim,
+            frames=frames,
+        ).ban_id
+
+    def insert_ban_result(self, *, chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames):
+        if self.return_existing:
+            for ban in self.bans:
+                if (
+                    ban.active
+                    and ban.chat_id == chat_id
+                    and ban.file_unique_id == file_unique_id
+                    and ban.model_name == model_name
+                    and ban.model_revision == model_revision
+                    and ban.vector_dim == vector_dim
+                ):
+                    return InsertBanResult(ban_id=ban.id, created=False)
+
+        self.next_ban_id += 1
+        stored_frames = []
+        for frame in frames:
+            self.next_frame_id += 1
+            stored_frames.append(
+                StoredVectorFrame(
+                    id=self.next_frame_id,
+                    ban_id=self.next_ban_id,
+                    frame_index=frame.frame_index,
+                    position_millis=frame.position_millis,
+                    vector=frame.vector,
+                )
+            )
+        self.bans.append(
+            VectorBan(
+                id=self.next_ban_id,
+                chat_id=chat_id,
+                file_unique_id=file_unique_id,
+                media_type=media_type,
+                model_name=model_name,
+                model_revision=model_revision,
+                vector_dim=vector_dim,
+                frames_count=len(frames),
+                active=True,
+                created_at="2026-05-19T00:00:00Z",
+                frames=stored_frames,
+            )
+        )
+        return InsertBanResult(ban_id=self.next_ban_id, created=True)
+
+    def load_active_bans(self, *, chat_id=None, model_name=None, model_revision=None, vector_dim=None):
+        bans = [ban for ban in self.bans if ban.active]
+        if chat_id is not None:
+            bans = [ban for ban in bans if ban.chat_id == chat_id]
+        if model_name is not None:
+            bans = [ban for ban in bans if ban.model_name == model_name]
+        if model_revision is not None:
+            bans = [ban for ban in bans if ban.model_revision == model_revision]
+        if vector_dim is not None:
+            bans = [ban for ban in bans if ban.vector_dim == vector_dim]
+        return bans
+
+    def deactivate_ban(self, ban_id):
+        from dataclasses import replace
+
+        for index, ban in enumerate(self.bans):
+            if ban.id == ban_id and ban.active:
+                self.bans[index] = replace(ban, active=False)
+                return True
+        return False
+
+    def save_index_state(self, state):
+        return None
+
+    def load_index_state(self, **kwargs):
+        return None
+
+
+class MemoryVectorFrame:
+    def __init__(self, frame_index, position_millis, vector):
+        self.frame_index = frame_index
+        self.position_millis = position_millis
+        self.vector = vector

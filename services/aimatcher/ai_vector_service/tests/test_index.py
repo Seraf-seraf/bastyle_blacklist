@@ -8,7 +8,7 @@ from ai_vector_service.index import (
     HNSWConfig,
     IndexedVectorRef,
 )
-from ai_vector_service.storage import IndexState, SQLiteVectorStore, VectorFrame
+from ai_vector_service.storage import IndexState, VectorFrame
 
 
 def test_faiss_hnsw_index_search_on_empty_index_returns_no_hits():
@@ -19,7 +19,7 @@ def test_faiss_hnsw_index_search_on_empty_index_returns_no_hits():
 
 def test_faiss_hnsw_index_finds_added_ban(tmp_path: Path):
     index = FaissHNSWVectorIndex(dimension=3, config=_test_config())
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     ban = _insert_ban(
         store,
         file_unique_id="file-1",
@@ -39,7 +39,7 @@ def test_faiss_hnsw_index_finds_added_ban(tmp_path: Path):
 
 def test_faiss_hnsw_index_filters_added_bans_by_chat_id(tmp_path: Path):
     index = FaissHNSWVectorIndex(dimension=3, config=_test_config())
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     first_ban = _insert_ban(
         store,
         chat_id=10,
@@ -67,7 +67,7 @@ def test_faiss_hnsw_index_filters_added_bans_by_chat_id(tmp_path: Path):
 
 
 def test_faiss_hnsw_index_saves_and_loads_from_disk(tmp_path: Path):
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     ban = _insert_ban(
         store,
         file_unique_id="file-1",
@@ -114,7 +114,7 @@ def test_faiss_hnsw_index_saves_and_loads_from_disk(tmp_path: Path):
 
 
 def test_faiss_hnsw_index_load_or_rebuild_rebuilds_stale_index(tmp_path: Path):
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     _insert_ban(
         store,
         file_unique_id="file-1",
@@ -163,7 +163,7 @@ def test_faiss_hnsw_index_load_or_rebuild_rebuilds_stale_index(tmp_path: Path):
 def test_faiss_hnsw_index_load_or_rebuild_rebuilds_when_active_bans_change_same_count(
     tmp_path: Path,
 ):
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     old_ban = _insert_ban(
         store,
         file_unique_id="file-1",
@@ -204,7 +204,7 @@ def test_faiss_hnsw_index_load_or_rebuild_rebuilds_when_active_bans_change_same_
 
 
 def test_faiss_hnsw_index_load_rejects_checksum_mismatch(tmp_path: Path):
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     ban = _insert_ban(
         store,
         file_unique_id="file-1",
@@ -236,7 +236,7 @@ def test_faiss_hnsw_index_load_rejects_checksum_mismatch(tmp_path: Path):
 
 
 def test_faiss_hnsw_index_load_or_rebuild_rebuilds_checksum_mismatch(tmp_path: Path):
-    store = SQLiteVectorStore(tmp_path / "vectors.sqlite")
+    store = MemoryVectorStore()
     ban = _insert_ban(
         store,
         file_unique_id="file-1",
@@ -267,7 +267,7 @@ def test_faiss_hnsw_index_load_or_rebuild_rebuilds_checksum_mismatch(tmp_path: P
 
 
 def _insert_ban(
-    store: SQLiteVectorStore,
+    store,
     *,
     file_unique_id: str,
     vectors: list[VectorFrame],
@@ -292,3 +292,81 @@ def _insert_ban(
 
 def _test_config() -> HNSWConfig:
     return HNSWConfig(m=8, ef_construction=20, ef_search=16)
+
+
+class MemoryVectorStore:
+    def __init__(self):
+        self.bans = []
+        self.states = {}
+        self.next_ban_id = 0
+        self.next_frame_id = 0
+
+    def insert_ban(
+        self,
+        *,
+        chat_id,
+        file_unique_id,
+        media_type,
+        model_name,
+        model_revision,
+        vector_dim,
+        frames,
+    ):
+        from ai_vector_service.storage import StoredVectorFrame, VectorBan
+
+        self.next_ban_id += 1
+        stored_frames = []
+        for frame in frames:
+            self.next_frame_id += 1
+            stored_frames.append(
+                StoredVectorFrame(
+                    id=self.next_frame_id,
+                    ban_id=self.next_ban_id,
+                    frame_index=frame.frame_index,
+                    position_millis=frame.position_millis,
+                    vector=frame.vector,
+                )
+            )
+        self.bans.append(
+            VectorBan(
+                id=self.next_ban_id,
+                chat_id=chat_id,
+                file_unique_id=file_unique_id,
+                media_type=media_type,
+                model_name=model_name,
+                model_revision=model_revision,
+                vector_dim=vector_dim,
+                frames_count=len(frames),
+                active=True,
+                created_at="2026-05-19T00:00:00Z",
+                frames=stored_frames,
+            )
+        )
+        return self.next_ban_id
+
+    def load_active_bans(self, *, chat_id=None, model_name=None, model_revision=None, vector_dim=None):
+        bans = [ban for ban in self.bans if ban.active]
+        if chat_id is not None:
+            bans = [ban for ban in bans if ban.chat_id == chat_id]
+        if model_name is not None:
+            bans = [ban for ban in bans if ban.model_name == model_name]
+        if model_revision is not None:
+            bans = [ban for ban in bans if ban.model_revision == model_revision]
+        if vector_dim is not None:
+            bans = [ban for ban in bans if ban.vector_dim == vector_dim]
+        return bans
+
+    def deactivate_ban(self, ban_id):
+        from dataclasses import replace
+
+        for index, ban in enumerate(self.bans):
+            if ban.id == ban_id and ban.active:
+                self.bans[index] = replace(ban, active=False)
+                return True
+        return False
+
+    def save_index_state(self, state):
+        self.states[(state.model_name, state.model_revision, state.vector_dim, state.index_type)] = state
+
+    def load_index_state(self, *, model_name, model_revision, vector_dim, index_type):
+        return self.states.get((model_name, model_revision, vector_dim, index_type))

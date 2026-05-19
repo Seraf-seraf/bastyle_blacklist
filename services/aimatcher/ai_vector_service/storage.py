@@ -1,14 +1,14 @@
 from dataclasses import dataclass
-from importlib import resources
-from pathlib import Path
-import sqlite3
+from datetime import datetime
+import hashlib
+import uuid
+from typing import TYPE_CHECKING
 
 import numpy as np
+from psycopg.rows import dict_row
 
-MIGRATIONS_PACKAGE = "ai_vector_service.migrations"
-MIGRATIONS_TABLE = "ai_vector_schema_migrations"
-UP_MARKER = "-- +bastyle Up"
-DOWN_MARKER = "-- +bastyle Down"
+if TYPE_CHECKING:
+    from ai_vector_service.db import DatabasePool
 
 
 @dataclass(frozen=True)
@@ -55,17 +55,18 @@ class IndexState:
     rebuilt_at: str
 
 
-class SQLiteVectorStore:
-    def __init__(self, path: str | Path) -> None:
-        if not str(path):
-            raise ValueError("путь к SQLite пустой")
+@dataclass(frozen=True)
+class InsertBanResult:
+    ban_id: int
+    created: bool
 
-        self._db = sqlite3.connect(path)
-        self._db.row_factory = sqlite3.Row
-        self._ensure_schema()
+
+class PostgresVectorStore:
+    def __init__(self, pool: "DatabasePool") -> None:
+        self._pool = pool
 
     def close(self) -> None:
-        self._db.close()
+        return None
 
     def insert_ban(
         self,
@@ -78,37 +79,98 @@ class SQLiteVectorStore:
         vector_dim: int,
         frames: list[VectorFrame],
     ) -> int:
-        self._validate_ban(chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames)
+        return self.insert_ban_result(
+            chat_id=chat_id,
+            file_unique_id=file_unique_id,
+            media_type=media_type,
+            model_name=model_name,
+            model_revision=model_revision,
+            vector_dim=vector_dim,
+            frames=frames,
+        ).ban_id
 
-        with self._db:
-            cursor = self._db.execute(
+    def insert_ban_result(
+        self,
+        *,
+        chat_id: int,
+        file_unique_id: str,
+        media_type: str,
+        model_name: str,
+        model_revision: str,
+        vector_dim: int,
+        frames: list[VectorFrame],
+    ) -> InsertBanResult:
+        self._validate_ban(chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames)
+        vector_signature = _vector_signature(frames, vector_dim)
+
+        with self._pool.transaction() as conn:
+            conn.row_factory = dict_row
+            existing = conn.execute(
+                """
+SELECT id
+FROM ai_vector_ban
+WHERE chat_id = %(chat_id)s
+  AND model_name = %(model_name)s
+  AND model_revision = %(model_revision)s
+  AND vector_signature = %(vector_signature)s
+""",
+                {
+                    "chat_id": chat_id,
+                    "model_name": model_name,
+                    "model_revision": model_revision,
+                    "vector_signature": vector_signature,
+                },
+            ).fetchone()
+            if existing is not None:
+                return InsertBanResult(ban_id=int(existing["id"]), created=False)
+
+            ban_uid = uuid.uuid4()
+            conn.execute(
+                """
+INSERT INTO media_ban (ban_uid, chat_id, media_type, file_unique_id)
+VALUES (%s, %s, %s, %s)
+""",
+                (ban_uid, chat_id, media_type, file_unique_id),
+            )
+            ban_row = conn.execute(
                 """
 INSERT INTO ai_vector_ban (
-    chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames_count, active
+    ban_uid, chat_id, file_unique_id, media_type, model_name, model_revision,
+    vector_dim, frames_count, active, vector_signature
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+VALUES (
+    %(ban_uid)s, %(chat_id)s, %(file_unique_id)s, %(media_type)s, %(model_name)s,
+    %(model_revision)s, %(vector_dim)s, %(frames_count)s, TRUE, %(vector_signature)s
+)
+RETURNING id
 """,
-                (chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, len(frames)),
-            )
-            ban_id = int(cursor.lastrowid)
+                {
+                    "ban_uid": ban_uid,
+                    "chat_id": chat_id,
+                    "file_unique_id": file_unique_id,
+                    "media_type": media_type,
+                    "model_name": model_name,
+                    "model_revision": model_revision,
+                    "vector_dim": vector_dim,
+                    "frames_count": len(frames),
+                    "vector_signature": vector_signature,
+                },
+            ).fetchone()
+            if ban_row is None:
+                raise RuntimeError("не удалось сохранить ai vector ban")
 
+            ban_id = int(ban_row["id"])
             for frame in frames:
-                self._db.execute(
+                conn.execute(
                     """
-INSERT INTO ai_vector_frame (
-    ban_id, frame_index, position_millis, vector_blob
-)
-VALUES (?, ?, ?, ?)
+INSERT INTO ai_vector_frame (ban_id, frame_index, position_millis, vector_blob)
+VALUES (%s, %s, %s, %s)
+ON CONFLICT (ban_id, frame_index) DO NOTHING
 """,
-                    (
-                        ban_id,
-                        frame.frame_index,
-                        frame.position_millis,
-                        _vector_to_blob(frame.vector, vector_dim),
-                    ),
+                    (ban_id, frame.frame_index, frame.position_millis, _vector_to_blob(frame.vector, vector_dim)),
                 )
 
-        return ban_id
+        return InsertBanResult(ban_id=ban_id, created=True)
 
     def load_active_bans(
         self,
@@ -118,23 +180,25 @@ VALUES (?, ?, ?, ?)
         model_revision: str | None = None,
         vector_dim: int | None = None,
     ) -> list[VectorBan]:
-        clauses = ["b.active = 1"]
-        params: list[object] = []
+        clauses = ["b.active = TRUE"]
+        params: dict[str, object] = {}
         if chat_id is not None:
-            clauses.append("b.chat_id = ?")
-            params.append(chat_id)
+            clauses.append("b.chat_id = %(chat_id)s")
+            params["chat_id"] = chat_id
         if model_name is not None:
-            clauses.append("b.model_name = ?")
-            params.append(model_name)
+            clauses.append("b.model_name = %(model_name)s")
+            params["model_name"] = model_name
         if model_revision is not None:
-            clauses.append("b.model_revision = ?")
-            params.append(model_revision)
+            clauses.append("b.model_revision = %(model_revision)s")
+            params["model_revision"] = model_revision
         if vector_dim is not None:
-            clauses.append("b.vector_dim = ?")
-            params.append(vector_dim)
+            clauses.append("b.vector_dim = %(vector_dim)s")
+            params["vector_dim"] = vector_dim
 
-        rows = self._db.execute(
-            f"""
+        with self._pool.raw.connection() as conn:
+            conn.row_factory = dict_row
+            rows = conn.execute(
+                f"""
 SELECT b.id AS ban_id, b.chat_id, b.file_unique_id, b.media_type, b.model_name, b.model_revision,
        b.vector_dim, b.frames_count, b.active, b.created_at,
        f.id AS frame_id, f.frame_index, f.position_millis, f.vector_blob
@@ -143,18 +207,24 @@ JOIN ai_vector_frame f ON f.ban_id = b.id
 WHERE {" AND ".join(clauses)}
 ORDER BY b.id, f.frame_index
 """,
-            params,
-        ).fetchall()
+                params,
+            ).fetchall()
 
         return _rows_to_bans(rows)
 
     def deactivate_ban(self, ban_id: int) -> bool:
-        with self._db:
-            cursor = self._db.execute(
+        with self._pool.transaction() as conn:
+            cursor = conn.execute(
                 """
-UPDATE ai_vector_ban
-SET active = 0
-WHERE id = ? AND active = 1
+WITH deactivated AS (
+    UPDATE ai_vector_ban
+    SET active = FALSE, updated_at = now(), deactivated_at = COALESCE(deactivated_at, now())
+    WHERE id = %s AND active = TRUE
+    RETURNING ban_uid
+)
+UPDATE media_ban
+SET active = FALSE, updated_at = now(), deactivated_at = COALESCE(deactivated_at, now())
+WHERE ban_uid IN (SELECT ban_uid FROM deactivated)
 """,
                 (ban_id,),
             )
@@ -170,36 +240,41 @@ WHERE id = ? AND active = 1
         vector_dim: int,
     ) -> int:
         clauses = [
-            "b.active = 1",
-            "b.model_name = ?",
-            "b.model_revision = ?",
-            "b.vector_dim = ?",
+            "b.active = TRUE",
+            "b.model_name = %(model_name)s",
+            "b.model_revision = %(model_revision)s",
+            "b.vector_dim = %(vector_dim)s",
         ]
-        params: list[object] = [model_name, model_revision, vector_dim]
+        params: dict[str, object] = {
+            "model_name": model_name,
+            "model_revision": model_revision,
+            "vector_dim": vector_dim,
+        }
         if chat_id is not None:
-            clauses.append("b.chat_id = ?")
-            params.append(chat_id)
+            clauses.append("b.chat_id = %(chat_id)s")
+            params["chat_id"] = chat_id
 
-        row = self._db.execute(
-            """
+        with self._pool.raw.connection() as conn:
+            row = conn.execute(
+                """
 SELECT COUNT(*) AS count
 FROM ai_vector_frame f
 JOIN ai_vector_ban b ON b.id = f.ban_id
 WHERE """ + " AND ".join(clauses),
-            params,
-        ).fetchone()
+                params,
+            ).fetchone()
 
-        return int(row["count"])
+        return int(row["count"] if isinstance(row, dict) else row[0])
 
     def save_index_state(self, state: IndexState) -> None:
-        with self._db:
-            self._db.execute(
+        with self._pool.transaction() as conn:
+            conn.execute(
                 """
 INSERT INTO ai_vector_index_state (
     model_name, model_revision, vector_dim, index_type, index_path,
     active_vectors_count, active_vectors_hash, index_file_sha256, rebuilt_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT(model_name, model_revision, vector_dim, index_type) DO UPDATE SET
     index_path = excluded.index_path,
     active_vectors_count = excluded.active_vectors_count,
@@ -228,15 +303,17 @@ ON CONFLICT(model_name, model_revision, vector_dim, index_type) DO UPDATE SET
         vector_dim: int,
         index_type: str,
     ) -> IndexState | None:
-        row = self._db.execute(
-            """
+        with self._pool.raw.connection() as conn:
+            conn.row_factory = dict_row
+            row = conn.execute(
+                """
 SELECT model_name, model_revision, vector_dim, index_type, index_path,
        active_vectors_count, active_vectors_hash, index_file_sha256, rebuilt_at
 FROM ai_vector_index_state
-WHERE model_name = ? AND model_revision = ? AND vector_dim = ? AND index_type = ?
+WHERE model_name = %s AND model_revision = %s AND vector_dim = %s AND index_type = %s
 """,
-            (model_name, model_revision, vector_dim, index_type),
-        ).fetchone()
+                (model_name, model_revision, vector_dim, index_type),
+            ).fetchone()
 
         if row is None:
             return None
@@ -250,24 +327,8 @@ WHERE model_name = ? AND model_revision = ? AND vector_dim = ? AND index_type = 
             active_vectors_count=int(row["active_vectors_count"]),
             active_vectors_hash=str(row["active_vectors_hash"]),
             index_file_sha256=str(row["index_file_sha256"]),
-            rebuilt_at=str(row["rebuilt_at"]),
+            rebuilt_at=_timestamp_to_str(row["rebuilt_at"]),
         )
-
-    def _ensure_schema(self) -> None:
-        self._db.executescript(
-            f"""
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
-
-CREATE TABLE IF NOT EXISTS {MIGRATIONS_TABLE} (
-    version INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-"""
-        )
-        _apply_migrations(self._db)
 
     def _validate_ban(
         self,
@@ -306,7 +367,7 @@ CREATE TABLE IF NOT EXISTS {MIGRATIONS_TABLE} (
             _vector_to_blob(frame.vector, vector_dim)
 
 
-def _rows_to_bans(rows: list[sqlite3.Row]) -> list[VectorBan]:
+def _rows_to_bans(rows: list[dict]) -> list[VectorBan]:
     bans: list[VectorBan] = []
     by_id: dict[int, VectorBan] = {}
 
@@ -324,7 +385,7 @@ def _rows_to_bans(rows: list[sqlite3.Row]) -> list[VectorBan]:
                 vector_dim=int(row["vector_dim"]),
                 frames_count=int(row["frames_count"]),
                 active=bool(row["active"]),
-                created_at=str(row["created_at"]),
+                created_at=_timestamp_to_str(row["created_at"]),
                 frames=[],
             )
             by_id[ban_id] = ban
@@ -358,60 +419,18 @@ def _blob_to_vector(blob: bytes, dimension: int) -> list[float]:
     return vector.astype(np.float32).tolist()
 
 
-def _apply_migrations(db: sqlite3.Connection) -> None:
-    applied_versions = _applied_migration_versions(db)
-    for migration in _load_migrations():
-        if migration.version in applied_versions:
-            continue
+def _vector_signature(frames: list[VectorFrame], dimension: int) -> str:
+    digest = hashlib.sha256()
+    for frame in frames:
+        digest.update(frame.frame_index.to_bytes(4, "big", signed=True))
+        digest.update(frame.position_millis.to_bytes(8, "big", signed=True))
+        digest.update(_vector_to_blob(frame.vector, dimension))
 
-        with db:
-            db.executescript(migration.up_sql)
-            db.execute(
-                f"INSERT INTO {MIGRATIONS_TABLE} (version, name) VALUES (?, ?)",
-                (migration.version, migration.name),
-            )
+    return digest.hexdigest()
 
 
-@dataclass(frozen=True)
-class _Migration:
-    version: int
-    name: str
-    up_sql: str
+def _timestamp_to_str(value) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
 
-
-def _applied_migration_versions(db: sqlite3.Connection) -> set[int]:
-    rows = db.execute(f"SELECT version FROM {MIGRATIONS_TABLE}").fetchall()
-    return {int(row["version"]) for row in rows}
-
-
-def _load_migrations() -> list[_Migration]:
-    migrations: list[_Migration] = []
-    for migration_file in sorted(resources.files(MIGRATIONS_PACKAGE).iterdir()):
-        if migration_file.suffix != ".sql":
-            continue
-
-        version, name = _parse_migration_name(migration_file.name)
-        sql = migration_file.read_text(encoding="utf-8")
-        migrations.append(_Migration(version=version, name=name, up_sql=_extract_up_sql(sql)))
-
-    return migrations
-
-
-def _parse_migration_name(filename: str) -> tuple[int, str]:
-    version_raw, separator, name = filename.partition("_")
-    if separator == "" or not version_raw.isdigit():
-        raise ValueError(f"некорректное имя миграции: {filename}")
-
-    return int(version_raw), name.removesuffix(".sql")
-
-
-def _extract_up_sql(sql: str) -> str:
-    up_index = sql.find(UP_MARKER)
-    if up_index == -1:
-        raise ValueError(f"миграция должна содержать {UP_MARKER}")
-
-    down_index = sql.find(DOWN_MARKER, up_index + len(UP_MARKER))
-    if down_index == -1:
-        return sql[up_index + len(UP_MARKER) :].strip()
-
-    return sql[up_index + len(UP_MARKER) : down_index].strip()
+    return str(value)

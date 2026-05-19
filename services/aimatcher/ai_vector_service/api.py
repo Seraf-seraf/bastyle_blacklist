@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from ai_vector_service.images import ImageDecodeError, ImageDecoder
 from ai_vector_service.index import FaissHNSWVectorIndex, HNSWConfig
 from ai_vector_service.model import ImageEmbeddingModel
-from ai_vector_service.storage import SQLiteVectorStore, VectorFrame
+from ai_vector_service.storage import InsertBanResult, PostgresVectorStore, VectorFrame
 
 
 class FrameEmbedding(BaseModel):
@@ -67,7 +67,7 @@ class VectorIndexService:
     def __init__(
         self,
         *,
-        store: SQLiteVectorStore,
+        store: PostgresVectorStore,
         model_name: str,
         model_revision: str,
         index_path: str,
@@ -98,9 +98,9 @@ class VectorIndexService:
             index = self._index_for_dimension(dimension)
             index.validate_vectors([frame.vector for frame in frames])
 
-            ban_id: int | None = None
+            insert_result: InsertBanResult | None = None
             try:
-                ban_id = self._store.insert_ban(
+                insert_result = self._insert_ban(
                     file_unique_id=file_unique_id,
                     chat_id=chat_id,
                     media_type=media_type,
@@ -116,6 +116,10 @@ class VectorIndexService:
                         for frame in frames
                     ],
                 )
+                ban_id = insert_result.ban_id
+                if not insert_result.created:
+                    return ban_id
+
                 ban = next(
                     ban
                     for ban in self._store.load_active_bans(
@@ -134,8 +138,8 @@ class VectorIndexService:
                     model_revision=self._model_revision,
                 )
             except Exception:
-                if ban_id is not None:
-                    self._store.deactivate_ban(ban_id)
+                if insert_result is not None and insert_result.created:
+                    self._store.deactivate_ban(insert_result.ban_id)
                     self._index = None
                     self._dimension = None
                 raise
@@ -181,6 +185,13 @@ class VectorIndexService:
         )
         self._dimension = dimension
         return self._index
+
+    def _insert_ban(self, **kwargs) -> InsertBanResult:
+        insert_with_result = getattr(self._store, "insert_ban_result", None)
+        if insert_with_result is not None:
+            return insert_with_result(**kwargs)
+
+        return InsertBanResult(ban_id=self._store.insert_ban(**kwargs), created=True)
 
 
 def create_app(

@@ -6,7 +6,7 @@ import threading
 
 import numpy as np
 
-from ai_vector_service.storage import IndexState, SQLiteVectorStore, VectorBan
+from ai_vector_service.storage import IndexState, PostgresVectorStore, VectorBan
 
 
 INDEX_TYPE = "hnsw-flat-ip"
@@ -85,7 +85,7 @@ class FaissHNSWVectorIndex:
     def load_or_rebuild(
         cls,
         *,
-        store: SQLiteVectorStore,
+        store: PostgresVectorStore,
         model_name: str,
         model_revision: str,
         vector_dim: int,
@@ -237,7 +237,7 @@ class FaissHNSWVectorIndex:
     def save(
         self,
         *,
-        store: SQLiteVectorStore,
+        store: PostgresVectorStore,
         path: str | Path,
         model_name: str,
         model_revision: str,

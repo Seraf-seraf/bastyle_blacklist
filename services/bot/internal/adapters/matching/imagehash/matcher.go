@@ -11,6 +11,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/corona10/goimagehash"
 	"github.com/disintegration/imaging"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type matcher struct {
@@ -19,7 +20,13 @@ type matcher struct {
 	threshold  int
 
 	index *LinearIndex
-	store *sqliteStore
+	store imageHashStore
+}
+
+type imageHashStore interface {
+	load(context.Context) ([]StoredImageHash, error)
+	insert(context.Context, StoredImageHash) (int64, error)
+	close() error
 }
 
 func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) (*matcher, error) {
@@ -37,30 +44,25 @@ func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor
 	}, nil
 }
 
-func NewSQLiteMatcher(ctx context.Context, downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int, dbPath string) (*matcher, error) {
-	const methodCtx = "imagehash/NewSQLiteMatcher"
+func NewPostgresMatcher(ctx context.Context, pool *pgxpool.Pool, downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) (*matcher, error) {
+	const methodCtx = "imagehash/NewPostgresMatcher"
 
-	if dbPath == "" {
-		return nil, apperrors.New(methodCtx, "путь к БД imagehash-матчера не настроен")
+	if pool == nil {
+		return nil, apperrors.New(methodCtx, "PostgreSQL pool imagehash-матчера не настроен")
 	}
 	if err := validateMatcherConfig(downloader, extractor, threshold, buffer); err != nil {
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
-	store, err := OpenSQLiteStore(ctx, dbPath)
-	if err != nil {
-		return nil, apperrors.Wrap(methodCtx, err)
-	}
+	store := NewPostgresStore(pool)
 
 	storedHashes, err := store.load(ctx)
 	if err != nil {
-		_ = store.close()
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	matcher, err := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes))
 	if err != nil {
-		_ = store.close()
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	matcher.store = store

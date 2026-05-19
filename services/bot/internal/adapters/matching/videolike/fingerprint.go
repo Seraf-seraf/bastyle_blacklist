@@ -1,6 +1,9 @@
 package videolike
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/corona10/goimagehash"
@@ -65,4 +68,17 @@ func fingerprintVideoLike(content domain.Content, extracted domain.ExtractedMedi
 func matchVideoLikeFingerprint(query StoredVideoLikeHash, stored StoredVideoLikeHash, threshold int) bool {
 	_, matched := matchStoredVideoLikeFingerprint(query, stored, threshold, DefaultMatchRule())
 	return matched
+}
+
+func videoLikeHashSignature(frames []StoredVideoLikeFrameHash) string {
+	parts := make([]string, 0, len(frames))
+	for _, frame := range frames {
+		parts = append(parts, strings.Join([]string{
+			strconv.Itoa(frame.FrameIndex),
+			strconv.Itoa(frame.PositionMillis),
+			strconv.FormatUint(frame.Hash, 10),
+		}, ":"))
+	}
+
+	return strings.Join(parts, "|")
 }

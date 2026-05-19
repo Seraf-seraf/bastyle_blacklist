@@ -9,6 +9,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type matcher struct {
@@ -17,8 +18,14 @@ type matcher struct {
 	threshold  int
 	plan       domain.MediaExtractionPlan
 	index      *LinearIndex
-	store      *sqliteStore
+	store      videoLikeStore
 	limits     Limits
+}
+
+type videoLikeStore interface {
+	load(context.Context) ([]StoredVideoLikeHash, error)
+	insert(context.Context, StoredVideoLikeHash) (int64, error)
+	close() error
 }
 
 type Limits struct {
@@ -53,40 +60,35 @@ func NewMatcher(
 	}, nil
 }
 
-func NewSQLiteMatcher(
+func NewPostgresMatcher(
 	ctx context.Context,
+	pool *pgxpool.Pool,
 	downloader ports.MediaDownloader,
 	extractor ports.MediaExtractor,
 	threshold int,
 	buffer int,
-	dbPath string,
 	plan domain.MediaExtractionPlan,
 	limits Limits,
 	rule MatchRule,
 ) (*matcher, error) {
-	const methodCtx = "videolike/NewSQLiteMatcher"
+	const methodCtx = "videolike/NewPostgresMatcher"
 
-	if dbPath == "" {
-		return nil, apperrors.New(methodCtx, "путь к БД videolike-матчер не настроен")
+	if pool == nil {
+		return nil, apperrors.New(methodCtx, "PostgreSQL pool videolike-матчер не настроен")
 	}
 	if err := validateMatcherConfig(downloader, extractor, threshold, buffer, plan, limits, rule); err != nil {
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
-	store, err := OpenSQLiteStore(ctx, dbPath)
-	if err != nil {
-		return nil, apperrors.Wrap(methodCtx, err)
-	}
+	store := NewPostgresStore(pool)
 
 	storedHashes, err := store.load(ctx)
 	if err != nil {
-		_ = store.close()
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
 	matcher, err := NewMatcher(downloader, extractor, threshold, buffer+len(storedHashes), plan, limits, rule)
 	if err != nil {
-		_ = store.close()
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	matcher.store = store

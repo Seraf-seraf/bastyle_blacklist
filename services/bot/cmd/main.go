@@ -73,7 +73,7 @@ func main() {
 		bot.StopReceivingUpdates()
 	}()
 
-	exactMatcher, err := exact.NewSQLiteMatcher(ctx, cfg.Matching.Exact.Buffer, cfg.Database.DSN)
+	exactMatcher, err := exact.NewPostgresMatcher(ctx, dbPool.Raw(), cfg.Matching.Exact.Buffer)
 	if err != nil {
 		panicWithContext(methodCtx, err)
 	}
@@ -82,13 +82,13 @@ func main() {
 		panicWithContext(methodCtx, err)
 	}
 	mediaExtractor := media.NewExtractor()
-	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
+	imageHashMatcher, err := imagehash.NewPostgresMatcher(
 		ctx,
+		dbPool.Raw(),
 		mediaDownloader,
 		mediaExtractor,
 		cfg.Matching.ImageHash.Threshold,
 		cfg.Matching.ImageHash.Buffer,
-		cfg.Database.DSN,
 	)
 	if err != nil {
 		panicWithContext(methodCtx, err)
@@ -113,13 +113,13 @@ func main() {
 	if err != nil {
 		panicWithContext(methodCtx, err)
 	}
-	videoLikeMatcher, err := videolike.NewSQLiteMatcher(
+	videoLikeMatcher, err := videolike.NewPostgresMatcher(
 		ctx,
+		dbPool.Raw(),
 		mediaDownloader,
 		videoLikeExtractor,
 		cfg.Matching.VideoLike.Threshold,
 		cfg.Matching.VideoLike.Buffer,
-		cfg.Database.DSN,
 		domain.MediaExtractionPlan{
 			MaxFrames:    cfg.MediaConfig.MaxFrames,
 			TargetWidth:  cfg.MediaConfig.TargetWidth,

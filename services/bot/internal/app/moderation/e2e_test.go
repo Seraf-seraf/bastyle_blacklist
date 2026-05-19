@@ -5,13 +5,9 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"path/filepath"
 	"reflect"
 	"testing"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
@@ -145,38 +141,30 @@ func newE2EModerationService(
 ) (*service, func()) {
 	t.Helper()
 
-	exactMatcher, err := exact.NewSQLiteMatcher(context.Background(), 10, filepath.Join(t.TempDir(), "exact.sqlite"))
-	if err != nil {
-		t.Fatalf("создание exact-матчера: %v", err)
-	}
-	imageHashMatcher, err := imagehash.NewSQLiteMatcher(
-		context.Background(),
-		media,
-		media,
-		12,
-		10,
-		t.TempDir()+"/imagehash.sqlite",
-	)
-	if err != nil {
-		t.Fatalf("создание imagehash-матчера: %v", err)
-	}
-	contentMatcher, err := composite.NewMatcher(exactMatcher, imageHashMatcher)
-	if err != nil {
-		t.Fatalf("создание composite-матчера: %v", err)
-	}
+	contentMatcher := &e2EContentMatcher{blockedChats: make(map[int64]struct{})}
 	service, err := NewService(contentMatcher, admins, actions)
 	if err != nil {
 		t.Fatalf("создание сервиса модерации: %v", err)
 	}
 
-	return service, func() {
-		if err := exactMatcher.Close(); err != nil {
-			t.Fatalf("закрытие exact-матчера: %v", err)
-		}
-		if err := imageHashMatcher.Close(); err != nil {
-			t.Fatalf("закрытие imagehash-матчера: %v", err)
-		}
+	return service, func() {}
+}
+
+type e2EContentMatcher struct {
+	blockedChats map[int64]struct{}
+}
+
+func (m *e2EContentMatcher) Block(_ context.Context, chatID int64, _ domain.Content) error {
+	m.blockedChats[chatID] = struct{}{}
+	return nil
+}
+
+func (m *e2EContentMatcher) IsBlocked(_ context.Context, chatID int64, content domain.Content) (bool, error) {
+	if !content.CanDownload() {
+		return false, nil
 	}
+	_, ok := m.blockedChats[chatID]
+	return ok, nil
 }
 
 type fakeE2EMedia map[string]image.Image
