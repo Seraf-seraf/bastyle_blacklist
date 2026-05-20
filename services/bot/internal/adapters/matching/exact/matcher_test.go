@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestNewMatcherRejectsNegativeBuffer(t *testing.T) {
@@ -24,10 +26,7 @@ func TestMatcherScopesBlockedFilesByChat(t *testing.T) {
 	matcher.store = newMemoryExactStore(nil)
 	defer matcher.Close()
 	content := domain.Content{FileUniqueID: "file-unique-id"}
-
-	if err := matcher.Block(ctx, 10, content); err != nil {
-		t.Fatalf("блокировка: %v", err)
-	}
+	matcher.blocked[exactKey{chatID: 10, fileUniqueID: content.FileUniqueID}] = struct{}{}
 
 	blocked, err := matcher.IsBlocked(ctx, 10, content)
 	if err != nil {
@@ -49,17 +48,9 @@ func TestMatcherScopesBlockedFilesByChat(t *testing.T) {
 func TestMatcherRestoresStateAfterRestart(t *testing.T) {
 	ctx := context.Background()
 	content := domain.Content{FileUniqueID: "persist-me"}
-	store := newMemoryExactStore(nil)
-
-	matcher, err := newMatcher(1)
-	if err != nil {
-		t.Fatalf("создание matcher: %v", err)
-	}
-	matcher.store = store
-	if err := matcher.Block(ctx, 77, content); err != nil {
-		t.Fatalf("блокировка: %v", err)
-	}
-	_ = matcher.Close()
+	store := newMemoryExactStore([]exactRecord{
+		{ChatID: 77, FileUniqueID: content.FileUniqueID},
+	})
 
 	reloaded, err := newMatcher(1)
 	if err != nil {
@@ -96,14 +87,15 @@ func (s *memoryExactStore) load(context.Context) ([]exactRecord, error) {
 	return append([]exactRecord(nil), s.records...), nil
 }
 
-func (s *memoryExactStore) insert(_ context.Context, chatID int64, _ domain.MediaType, fileUniqueID string) error {
+func (s *memoryExactStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, chatID int64, fileUniqueID string) (bool, error) {
 	for _, record := range s.records {
 		if record.ChatID == chatID && record.FileUniqueID == fileUniqueID {
-			return nil
+			return false, nil
 		}
 	}
+
 	s.records = append(s.records, exactRecord{ChatID: chatID, FileUniqueID: fileUniqueID})
-	return nil
+	return true, nil
 }
 
 func (s *memoryExactStore) close() error {

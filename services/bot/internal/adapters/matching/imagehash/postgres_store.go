@@ -19,11 +19,7 @@ func NewPostgresStore(pool *pgxpool.Pool) *postgresStore {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) LoadActive(ctx context.Context) ([]StoredImageHash, error) {
-	return s.load(ctx)
-}
-
-func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredImageHash) (int64, error) {
+func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredImageHash) (int64, bool, error) {
 	const methodCtx = "imagehash/postgresStore.Insert"
 
 	signature := hashSignature(hash.Hashes)
@@ -43,26 +39,28 @@ WHERE chat_id = $2 AND hash_version = $5 AND hash_signature = $6
 LIMIT 1
 `, banUID, hash.ChatID, hash.FileUniqueID, string(hash.MediaType), hashVersion, signature).Scan(&id, &storedBanUID)
 	if err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
+		return 0, false, apperrors.Wrap(methodCtx, err)
 	}
-	if storedBanUID != banUID {
-		if err := cleanupEmptyMediaBan(ctx, tx, banUID); err != nil {
-			return 0, apperrors.Wrap(methodCtx, err)
-		}
-	}
+	created := storedBanUID == banUID
 
+	variants := make([]int32, 0, len(hash.Hashes))
+	values := make([]string, 0, len(hash.Hashes))
 	for variant, value := range hash.Hashes {
-		_, err = tx.Exec(ctx, `
-INSERT INTO blocked_image_hash (image_id, variant, hash_uint64)
-VALUES ($1, $2, $3)
-ON CONFLICT (image_id, variant) DO NOTHING
-`, id, variant, strconv.FormatUint(value, 10))
-		if err != nil {
-			return 0, apperrors.Wrap(methodCtx, err)
-		}
+		variants = append(variants, int32(variant))
+		values = append(values, strconv.FormatUint(value, 10))
 	}
 
-	return id, nil
+	_, err = tx.Exec(ctx, `
+INSERT INTO blocked_image_hash (image_id, variant, hash_uint64)
+SELECT $1, variant, hash_uint64
+FROM unnest($2::int[], $3::text[]) AS h(variant, hash_uint64)
+ON CONFLICT (image_id, variant) DO NOTHING
+`, id, variants, values)
+	if err != nil {
+		return 0, false, apperrors.Wrap(methodCtx, err)
+	}
+
+	return id, created, nil
 }
 
 func (s *postgresStore) Deactivate(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {
@@ -136,67 +134,4 @@ ORDER BY bi.id, bih.variant
 		hashes = append(hashes, *byID[id])
 	}
 	return hashes, nil
-}
-
-func (s *postgresStore) insert(ctx context.Context, hash StoredImageHash) (int64, error) {
-	const methodCtx = "imagehash/postgresStore.insert"
-
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	signature := hashSignature(hash.Hashes)
-	var existingID int64
-	if err := tx.QueryRow(ctx, `
-SELECT id
-FROM blocked_image
-WHERE chat_id = $1 AND hash_version = $2 AND hash_signature = $3
-`, hash.ChatID, hashVersion, signature).Scan(&existingID); err == nil {
-		return existingID, apperrors.Wrap(methodCtx, tx.Commit(ctx))
-	} else if err != pgx.ErrNoRows {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-
-	banUID := uuid.New()
-	if err := insertMediaBan(ctx, tx, banUID, hash.ChatID, hash.MediaType, hash.FileUniqueID); err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-	id, err := s.Insert(ctx, tx, banUID, hash)
-	if err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-	return id, nil
-}
-
-func insertMediaBan(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, mediaType domain.MediaType, fileUniqueID string) error {
-	const methodCtx = "imagehash/insertMediaBan"
-
-	_, err := tx.Exec(ctx, `
-INSERT INTO media_ban (ban_uid, chat_id, media_type, file_unique_id)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (ban_uid) DO NOTHING
-`, banUID, chatID, string(mediaType), fileUniqueID)
-	return apperrors.Wrap(methodCtx, err)
-}
-
-func cleanupEmptyMediaBan(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {
-	const methodCtx = "imagehash/cleanupEmptyMediaBan"
-
-	_, err := tx.Exec(ctx, `
-DELETE FROM media_ban mb
-WHERE mb.ban_uid = $1
-  AND NOT EXISTS (SELECT 1 FROM blocked_exact be WHERE be.ban_uid = mb.ban_uid)
-  AND NOT EXISTS (SELECT 1 FROM blocked_image bi WHERE bi.ban_uid = mb.ban_uid)
-  AND NOT EXISTS (SELECT 1 FROM blocked_video_like bvl WHERE bvl.ban_uid = mb.ban_uid)
-  AND NOT EXISTS (SELECT 1 FROM ai_vector_ban avb WHERE avb.ban_uid = mb.ban_uid)
-`, banUID)
-	return apperrors.Wrap(methodCtx, err)
 }

@@ -10,36 +10,6 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
-func TestMatcherBlockSendsFramesToClient(t *testing.T) {
-	client := &fakeClient{}
-	matcher := newTestMatcher(t, client)
-	content := testPhotoContent()
-
-	if err := matcher.Block(context.Background(), 10, content); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(client.banRequests) != 1 {
-		t.Fatalf("запросы бана = %d, ожидалось 1", len(client.banRequests))
-	}
-	request := client.banRequests[0]
-	if request.ChatID != 10 {
-		t.Fatalf("chat_id = %d, ожидалось 10", request.ChatID)
-	}
-	if request.FileUniqueID != content.FileUniqueID {
-		t.Fatalf("file_unique_id = %q, ожидалось %q", request.FileUniqueID, content.FileUniqueID)
-	}
-	if request.MediaType != string(content.Type) {
-		t.Fatalf("тип медиа = %q, ожидалось %q", request.MediaType, content.Type)
-	}
-	if len(request.Frames) != 1 {
-		t.Fatalf("кадры = %d, ожидалось 1", len(request.Frames))
-	}
-	if len(request.Frames[0].Data) == 0 {
-		t.Fatal("ожидалось: закодированные данные кадра")
-	}
-}
-
 func TestMatcherIsBlockedReturnsStaticMatch(t *testing.T) {
 	client := &fakeClient{
 		searchResponse: SearchResponse{
@@ -71,7 +41,7 @@ func TestMatcherIsBlockedAppliesVideoLikeRule(t *testing.T) {
 		},
 	}
 	matcher := newTestMatcher(t, client)
-	matcher.videoExtractor = fakeExtractor{frames: 3}
+	matcher.contentFrames.videoFrameExtractor = fakeExtractor{frames: 3}
 
 	blocked, err := matcher.IsBlocked(context.Background(), 10, domain.Content{
 		FileID:       "animation-file-id",
@@ -121,16 +91,18 @@ func TestMatcherReturnsClientError(t *testing.T) {
 	}
 }
 
-func newTestMatcher(t *testing.T, client *fakeClient) *Matcher {
+func newTestMatcher(t *testing.T, client *fakeClient) *matcher {
 	t.Helper()
 
 	matcher, err := NewMatcher(Options{
-		Downloader:     fakeDownloader{},
-		ImageExtractor: fakeExtractor{frames: 1},
-		VideoExtractor: fakeExtractor{frames: 2},
-		Client:         client,
-		Threshold:      0.92,
-		TopK:           5,
+		Downloader:          fakeDownloader{},
+		ImageFrameExtractor: fakeExtractor{frames: 1},
+		VideoFrameExtractor: fakeExtractor{frames: 2},
+		Client:              client,
+		ModelName:           "test-model",
+		ModelRevision:       "test-revision",
+		Threshold:           0.92,
+		TopK:                5,
 		Plan: domain.MediaExtractionPlan{
 			MaxFrames:    10,
 			TargetWidth:  320,
@@ -163,20 +135,30 @@ func testPhotoContent() domain.Content {
 }
 
 type fakeClient struct {
-	banRequests    []BanRequest
+	embedRequests  []EmbedRequest
 	searchRequests []SearchRequest
+	embedResponse  EmbedResponse
 	searchResponse SearchResponse
-	banErr         error
+	embedErr       error
 	searchErr      error
 }
 
-func (c *fakeClient) Ban(_ context.Context, request BanRequest) (BanResponse, error) {
-	c.banRequests = append(c.banRequests, request)
-	if c.banErr != nil {
-		return BanResponse{}, c.banErr
+func (c *fakeClient) Embed(_ context.Context, request EmbedRequest) (EmbedResponse, error) {
+	c.embedRequests = append(c.embedRequests, request)
+	if c.embedErr != nil {
+		return EmbedResponse{}, c.embedErr
+	}
+	if c.embedResponse.Dimension > 0 {
+		return c.embedResponse, nil
 	}
 
-	return BanResponse{BanID: 1}, nil
+	return EmbedResponse{
+		ModelName: "test-model",
+		Dimension: 3,
+		Frames: []FrameEmbedding{
+			{FrameIndex: 0, Vector: []float32{1, 0, 0}},
+		},
+	}, nil
 }
 
 func (c *fakeClient) Search(_ context.Context, request SearchRequest) (SearchResponse, error) {

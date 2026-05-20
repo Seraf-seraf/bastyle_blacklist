@@ -19,15 +19,11 @@ func NewPostgresStore(pool *pgxpool.Pool) *postgresStore {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) LoadActive(ctx context.Context) ([]StoredVideoLikeHash, error) {
-	return s.load(ctx)
-}
-
-func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredVideoLikeHash) (int64, error) {
+func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredVideoLikeHash) (int64, bool, error) {
 	const methodCtx = "videolike/postgresStore.Insert"
 
 	if len(hash.Frames) == 0 {
-		return 0, apperrors.New(methodCtx, "PostgreSQL-хранилище video-like: кадры хеша пустые")
+		return 0, false, apperrors.New(methodCtx, "PostgreSQL-хранилище video-like: кадры хеша пустые")
 	}
 
 	hashVersion := hash.HashVersion
@@ -54,26 +50,30 @@ WHERE chat_id = $2 AND hash_version = $6 AND hash_signature = $7
 LIMIT 1
 `, banUID, hash.ChatID, hash.FileUniqueID, string(hash.SourceType), hash.DurationSec, hashVersion, signature).Scan(&id, &storedBanUID)
 	if err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
+		return 0, false, apperrors.Wrap(methodCtx, err)
 	}
-	if storedBanUID != banUID {
-		if err := cleanupEmptyMediaBan(ctx, tx, banUID); err != nil {
-			return 0, apperrors.Wrap(methodCtx, err)
-		}
-	}
+	created := storedBanUID == banUID
 
+	frameIndexes := make([]int32, 0, len(hash.Frames))
+	positionMillis := make([]int32, 0, len(hash.Frames))
+	hashes := make([]string, 0, len(hash.Frames))
 	for _, frame := range hash.Frames {
-		_, err = tx.Exec(ctx, `
-INSERT INTO blocked_video_like_frame_hash (video_like_id, frame_index, position_millis, hash_uint64)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (video_like_id, frame_index) DO NOTHING
-`, id, frame.FrameIndex, frame.PositionMillis, strconv.FormatUint(frame.Hash, 10))
-		if err != nil {
-			return 0, apperrors.Wrap(methodCtx, err)
-		}
+		frameIndexes = append(frameIndexes, int32(frame.FrameIndex))
+		positionMillis = append(positionMillis, int32(frame.PositionMillis))
+		hashes = append(hashes, strconv.FormatUint(frame.Hash, 10))
 	}
 
-	return id, nil
+	_, err = tx.Exec(ctx, `
+INSERT INTO blocked_video_like_frame_hash (video_like_id, frame_index, position_millis, hash_uint64)
+SELECT $1, frame_index, position_millis, hash_uint64
+FROM unnest($2::int[], $3::int[], $4::text[]) AS h(frame_index, position_millis, hash_uint64)
+ON CONFLICT (video_like_id, frame_index) DO NOTHING
+`, id, frameIndexes, positionMillis, hashes)
+	if err != nil {
+		return 0, false, apperrors.Wrap(methodCtx, err)
+	}
+
+	return id, created, nil
 }
 
 func (s *postgresStore) Deactivate(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {
@@ -158,71 +158,4 @@ ORDER BY bvl.id, bvlfh.frame_index
 		hashes = append(hashes, *byID[id])
 	}
 	return hashes, nil
-}
-
-func (s *postgresStore) insert(ctx context.Context, hash StoredVideoLikeHash) (int64, error) {
-	const methodCtx = "videolike/postgresStore.insert"
-
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	hashVersion := hash.HashVersion
-	if hashVersion == "" {
-		hashVersion = videoLikeHashVersion
-	}
-	signature := videoLikeHashSignature(hash.Frames)
-	var existingID int64
-	if err := tx.QueryRow(ctx, `
-SELECT id
-FROM blocked_video_like
-WHERE chat_id = $1 AND hash_version = $2 AND hash_signature = $3
-`, hash.ChatID, hashVersion, signature).Scan(&existingID); err == nil {
-		return existingID, apperrors.Wrap(methodCtx, tx.Commit(ctx))
-	} else if err != pgx.ErrNoRows {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-
-	banUID := uuid.New()
-	if err := insertMediaBan(ctx, tx, banUID, hash.ChatID, hash.SourceType, hash.FileUniqueID); err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-	id, err := s.Insert(ctx, tx, banUID, hash)
-	if err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return 0, apperrors.Wrap(methodCtx, err)
-	}
-	return id, nil
-}
-
-func insertMediaBan(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, mediaType domain.MediaType, fileUniqueID string) error {
-	const methodCtx = "videolike/insertMediaBan"
-
-	_, err := tx.Exec(ctx, `
-INSERT INTO media_ban (ban_uid, chat_id, media_type, file_unique_id)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (ban_uid) DO NOTHING
-`, banUID, chatID, string(mediaType), fileUniqueID)
-	return apperrors.Wrap(methodCtx, err)
-}
-
-func cleanupEmptyMediaBan(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {
-	const methodCtx = "videolike/cleanupEmptyMediaBan"
-
-	_, err := tx.Exec(ctx, `
-DELETE FROM media_ban mb
-WHERE mb.ban_uid = $1
-  AND NOT EXISTS (SELECT 1 FROM blocked_exact be WHERE be.ban_uid = mb.ban_uid)
-  AND NOT EXISTS (SELECT 1 FROM blocked_image bi WHERE bi.ban_uid = mb.ban_uid)
-  AND NOT EXISTS (SELECT 1 FROM blocked_video_like bvl WHERE bvl.ban_uid = mb.ban_uid)
-  AND NOT EXISTS (SELECT 1 FROM ai_vector_ban avb WHERE avb.ban_uid = mb.ban_uid)
-`, banUID)
-	return apperrors.Wrap(methodCtx, err)
 }

@@ -2,11 +2,14 @@ package exact
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,7 +31,7 @@ type exactRecord struct {
 
 type exactStore interface {
 	load(context.Context) ([]exactRecord, error)
-	insert(context.Context, int64, domain.MediaType, string) error
+	Insert(context.Context, pgx.Tx, uuid.UUID, int64, string) (bool, error)
 	close() error
 }
 
@@ -71,10 +74,6 @@ func NewPostgresMatcher(ctx context.Context, pool *pgxpool.Pool, buffer int) (*m
 func (m *matcher) Close() error {
 	const methodCtx = "exact/matcher.Close"
 
-	if m.store == nil {
-		return nil
-	}
-
 	return apperrors.Wrap(methodCtx, m.store.close())
 }
 
@@ -90,24 +89,48 @@ func (m *matcher) IsBlocked(_ context.Context, chatID int64, content domain.Cont
 	return ok, nil
 }
 
-func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
-	const methodCtx = "exact/matcher.Block"
+func (m *matcher) PrepareBlock(_ context.Context, chatID int64, content domain.Content) (ports.PreparedBlock, error) {
+	const methodCtx = "exact/matcher.PrepareBlock"
 
 	if content.FileUniqueID == "" {
-		return nil
-	}
-	if m.store == nil {
-		return apperrors.New(methodCtx, "хранилище exact не настроено")
+		return nil, apperrors.New(methodCtx, fmt.Sprintf("%v: exact требует file_unique_id", ports.ErrUnsupportedContent))
 	}
 
-	if err := m.store.insert(ctx, chatID, content.Type, content.FileUniqueID); err != nil {
-		return apperrors.Wrap(methodCtx, err)
+	return &preparedBlock{
+		chatID:       chatID,
+		fileUniqueID: content.FileUniqueID,
+	}, nil
+}
+
+type preparedBlock struct {
+	chatID       int64
+	fileUniqueID string
+}
+
+func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (bool, error) {
+	const methodCtx = "exact/matcher.PersistBlock"
+
+	prepared, ok := block.(*preparedBlock)
+	if !ok {
+		return false, apperrors.New(methodCtx, "неверный тип prepared block exact")
+	}
+
+	return m.store.Insert(ctx, tx, banUID, prepared.chatID, prepared.fileUniqueID)
+}
+
+func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error {
+	const methodCtx = "exact/matcher.ApplyBlock"
+
+	prepared, ok := block.(*preparedBlock)
+	if !ok {
+		return apperrors.New(methodCtx, "неверный тип prepared block exact")
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.blocked[exactKey{chatID: chatID, fileUniqueID: content.FileUniqueID}] = struct{}{}
+
+	m.blocked[exactKey{chatID: prepared.chatID, fileUniqueID: prepared.fileUniqueID}] = struct{}{}
 	return nil
 }
 
-var _ ports.ContentMatcher = (*matcher)(nil)
+var _ ports.ContentBlockMatcher = (*matcher)(nil)

@@ -8,6 +8,8 @@ import (
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type fakeDownloader struct{}
@@ -50,7 +52,7 @@ func TestMatcherBlocksSameWhiteImageBackgroundWithDifferentFileID(t *testing.T) 
 		},
 	}, 8, 2)
 
-	if err := matcher.Block(ctx, 10, blockedContent); err != nil {
+	if err := applyPreparedBlock(ctx, matcher, 10, blockedContent); err != nil {
 		t.Fatalf("блокировка белого изображения: %v", err)
 	}
 
@@ -87,7 +89,7 @@ func TestMatcherBlocksRotatedImageWithPerceptionHashVariants(t *testing.T) {
 		},
 	}, 8, 2)
 
-	if err := matcher.Block(ctx, 10, blockedContent); err != nil {
+	if err := applyPreparedBlock(ctx, matcher, 10, blockedContent); err != nil {
 		t.Fatalf("блокировка изображения: %v", err)
 	}
 
@@ -168,21 +170,30 @@ func (s *memoryImageHashStore) load(context.Context) ([]StoredImageHash, error) 
 	return append([]StoredImageHash(nil), s.hashes...), nil
 }
 
-func (s *memoryImageHashStore) insert(_ context.Context, hash StoredImageHash) (int64, error) {
+func (s *memoryImageHashStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, hash StoredImageHash) (int64, bool, error) {
 	signature := imageHashIndexSignature(hash)
 	for _, stored := range s.hashes {
 		if imageHashIndexSignature(stored) == signature {
-			return stored.ID, nil
+			return stored.ID, false, nil
 		}
 	}
 	s.nextID++
 	hash.ID = s.nextID
 	s.hashes = append(s.hashes, hash)
-	return hash.ID, nil
+	return hash.ID, true, nil
 }
 
 func (s *memoryImageHashStore) close() error {
 	return nil
+}
+
+func applyPreparedBlock(ctx context.Context, matcher *matcher, chatID int64, content domain.Content) error {
+	block, err := matcher.PrepareBlock(ctx, chatID, content)
+	if err != nil {
+		return err
+	}
+
+	return matcher.ApplyBlock(ctx, block)
 }
 
 func solidImage(width int, height int, c color.Color) image.Image {

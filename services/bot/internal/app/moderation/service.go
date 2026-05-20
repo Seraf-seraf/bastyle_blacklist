@@ -11,26 +11,26 @@ import (
 const privateChatInfo = "Bastyle Blacklist — бот для модерации медиа в групповых чатах.\nИсходники: https://github.com/Seraf-seraf/bastyle_blacklist"
 
 type service struct {
-	contentMatcher ports.ContentMatcher
+	contentMatcher ports.ContentBlocker
 	admins         ports.AdminChecker
 	actions        ports.MessageActions
 }
 
 func NewService(
-	contentMatcher ports.ContentMatcher,
+	contentMatcher ports.ContentBlocker,
 	admins ports.AdminChecker,
 	actions ports.MessageActions,
 ) (*service, error) {
 	const methodCtx = "moderation/NewService"
 
 	if contentMatcher == nil {
-		return nil, apperrors.New(methodCtx, "сервис модерации: матчер контента не настроен")
+		return nil, apperrors.New(methodCtx, "матчер контента не настроен")
 	}
 	if admins == nil {
-		return nil, apperrors.New(methodCtx, "сервис модерации: проверка админов не настроена")
+		return nil, apperrors.New(methodCtx, "проверка админов не настроена")
 	}
 	if actions == nil {
-		return nil, apperrors.New(methodCtx, "сервис модерации: действия с сообщениями не настроены")
+		return nil, apperrors.New(methodCtx, "действия с сообщениями не настроены")
 	}
 
 	return &service{

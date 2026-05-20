@@ -6,7 +6,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 )
 
-type ContentMatcher interface {
+type ContentBlocker interface {
 	Block(ctx context.Context, chatID int64, content domain.Content) error
 	IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error)
 }

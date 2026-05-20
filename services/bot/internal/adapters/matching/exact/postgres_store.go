@@ -3,7 +3,6 @@ package exact
 import (
 	"context"
 
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,19 +17,19 @@ func NewPostgresStore(pool *pgxpool.Pool) *postgresStore {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) LoadActive(ctx context.Context) ([]exactRecord, error) {
-	return s.load(ctx)
-}
-
-func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, fileUniqueID string) error {
+func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, fileUniqueID string) (bool, error) {
 	const methodCtx = "exact/postgresStore.Insert"
 
-	_, err := tx.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 INSERT INTO blocked_exact (ban_uid, chat_id, file_unique_id)
 VALUES ($1, $2, $3)
 ON CONFLICT (chat_id, file_unique_id) DO NOTHING
 `, banUID, chatID, fileUniqueID)
-	return apperrors.Wrap(methodCtx, err)
+	if err != nil {
+		return false, apperrors.Wrap(methodCtx, err)
+	}
+
+	return tag.RowsAffected() > 0, nil
 }
 
 func (s *postgresStore) Deactivate(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {
@@ -73,50 +72,4 @@ ORDER BY be.chat_id, be.file_unique_id
 	}
 
 	return records, apperrors.Wrap(methodCtx, rows.Err())
-}
-
-func (s *postgresStore) insert(ctx context.Context, chatID int64, mediaType domain.MediaType, fileUniqueID string) error {
-	const methodCtx = "exact/postgresStore.insert"
-
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	var exists bool
-	if err := tx.QueryRow(ctx, `
-SELECT EXISTS (
-    SELECT 1 FROM blocked_exact
-    WHERE chat_id = $1 AND file_unique_id = $2
-)
-`, chatID, fileUniqueID).Scan(&exists); err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	if exists {
-		return apperrors.Wrap(methodCtx, tx.Commit(ctx))
-	}
-
-	banUID := uuid.New()
-	if err := insertMediaBan(ctx, tx, banUID, chatID, mediaType, fileUniqueID); err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	if err := s.Insert(ctx, tx, banUID, chatID, fileUniqueID); err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-
-	return apperrors.Wrap(methodCtx, tx.Commit(ctx))
-}
-
-func insertMediaBan(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, mediaType domain.MediaType, fileUniqueID string) error {
-	const methodCtx = "exact/insertMediaBan"
-
-	_, err := tx.Exec(ctx, `
-INSERT INTO media_ban (ban_uid, chat_id, media_type, file_unique_id)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (ban_uid) DO NOTHING
-`, banUID, chatID, string(mediaType), fileUniqueID)
-	return apperrors.Wrap(methodCtx, err)
 }

@@ -11,6 +11,8 @@ import (
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type fakeDownloader struct {
@@ -313,7 +315,7 @@ func TestNewMatcherRejectsInvalidLimits(t *testing.T) {
 	}
 }
 
-func TestMatcherBlockRequiresStore(t *testing.T) {
+func TestMatcherPersistBlockRequiresStore(t *testing.T) {
 	matcher := newTestMatcher(t, &fakeDownloader{
 		filePaths: map[string]string{
 			"animation-file": "animations/file.mp4",
@@ -323,10 +325,10 @@ func TestMatcherBlockRequiresStore(t *testing.T) {
 		},
 	})
 
-	err := matcher.Block(context.Background(), 10, domain.Content{
-		FileID:       "animation-file",
-		FileUniqueID: "animation-unique",
-		Type:         domain.MediaAnimation,
+	_, err := matcher.PersistBlock(context.Background(), nil, uuid.New(), &preparedBlock{
+		fingerprint: StoredVideoLikeHash{
+			Frames: []StoredVideoLikeFrameHash{{FrameIndex: 0}},
+		},
 	})
 	if err == nil {
 		t.Fatal("ожидалось: ошибка отсутствующего хранилища")
@@ -348,7 +350,7 @@ func TestMatcherBlockStoresFingerprintAndIsBlockedFindsIt(t *testing.T) {
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
 	matcher := newTestMatcherWithStore(t, downloader, extractor, nil)
 
-	err := matcher.Block(ctx, 10, domain.Content{
+	err := applyPreparedBlock(ctx, matcher, 10, domain.Content{
 		FileID:       "blocked-file",
 		FileUniqueID: "blocked-unique",
 		Type:         domain.MediaAnimation,
@@ -389,7 +391,7 @@ func TestMatcherIsBlockedAllowsUnrelatedAnimation(t *testing.T) {
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
 	matcher := newTestMatcherWithStore(t, downloader, extractor, nil)
 
-	err := matcher.Block(ctx, 10, domain.Content{
+	err := applyPreparedBlock(ctx, matcher, 10, domain.Content{
 		FileID:       "blocked-file",
 		FileUniqueID: "blocked-unique",
 		Type:         domain.MediaAnimation,
@@ -438,7 +440,7 @@ func TestMatcherBlockStoresVideoStickerFingerprint(t *testing.T) {
 	extractor := &fakeExtractor{extracted: testExtractedVideoLikeMedia()}
 	matcher := newTestMatcherWithStore(t, downloader, extractor, nil)
 
-	err := matcher.Block(ctx, 10, domain.Content{
+	err := applyPreparedBlock(ctx, matcher, 10, domain.Content{
 		FileID:       "blocked-sticker",
 		FileUniqueID: "blocked-sticker-unique",
 		Type:         domain.MediaStickerStatic,
@@ -610,21 +612,30 @@ func (s *memoryVideoLikeStore) load(context.Context) ([]StoredVideoLikeHash, err
 	return append([]StoredVideoLikeHash(nil), s.hashes...), nil
 }
 
-func (s *memoryVideoLikeStore) insert(_ context.Context, hash StoredVideoLikeHash) (int64, error) {
+func (s *memoryVideoLikeStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, hash StoredVideoLikeHash) (int64, bool, error) {
 	signature := videoLikeIndexSignature(hash)
 	for _, stored := range s.hashes {
 		if videoLikeIndexSignature(stored) == signature {
-			return stored.ID, nil
+			return stored.ID, false, nil
 		}
 	}
 	s.nextID++
 	hash.ID = s.nextID
 	s.hashes = append(s.hashes, hash)
-	return hash.ID, nil
+	return hash.ID, true, nil
 }
 
 func (s *memoryVideoLikeStore) close() error {
 	return nil
+}
+
+func applyPreparedBlock(ctx context.Context, matcher *matcher, chatID int64, content domain.Content) error {
+	block, err := matcher.PrepareBlock(ctx, chatID, content)
+	if err != nil {
+		return err
+	}
+
+	return matcher.ApplyBlock(ctx, block)
 }
 
 func defaultTestPlan() domain.MediaExtractionPlan {

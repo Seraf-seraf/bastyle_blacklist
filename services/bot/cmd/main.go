@@ -16,9 +16,9 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/database/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/httpclient"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/aivector"
-	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/composite"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/orchestrator"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/videolike"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
@@ -162,14 +162,14 @@ func main() {
 			panicWithContext(methodCtx, err)
 		}
 		aiVectorMatcher, err := aivector.NewMatcher(aivector.Options{
-			Downloader:     mediaDownloader,
-			ImageExtractor: mediaExtractor,
-			VideoExtractor: aiVectorExtractor,
-			Client:         aiVectorClient,
-			ModelName:      cfg.Matching.AIVector.ModelName,
-			ModelRevision:  cfg.Matching.AIVector.ModelRevision,
-			Threshold:      cfg.Matching.AIVector.Threshold,
-			TopK:           cfg.Matching.AIVector.TopK,
+			Downloader:          mediaDownloader,
+			ImageFrameExtractor: mediaExtractor,
+			VideoFrameExtractor: aiVectorExtractor,
+			Client:              aiVectorClient,
+			ModelName:           cfg.Matching.AIVector.ModelName,
+			ModelRevision:       cfg.Matching.AIVector.ModelRevision,
+			Threshold:           cfg.Matching.AIVector.Threshold,
+			TopK:                cfg.Matching.AIVector.TopK,
 			Plan: domain.MediaExtractionPlan{
 				MaxFrames:    cfg.MediaConfig.MaxFrames,
 				TargetWidth:  cfg.MediaConfig.TargetWidth,
@@ -192,7 +192,7 @@ func main() {
 		matchers = append(matchers, aiVectorMatcher)
 	}
 
-	contentMatcher, err := composite.NewMatcher(dbPool, matchers...)
+	contentMatcher, err := orchestrator.NewBlockOrchestrator(dbPool, matchers...)
 	if err != nil {
 		panicWithContext(methodCtx, err)
 	}

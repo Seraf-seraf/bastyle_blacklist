@@ -2,6 +2,7 @@ package imagehash
 
 import (
 	"context"
+	"errors"
 	"image"
 	"path/filepath"
 	"strings"
@@ -11,13 +12,14 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/corona10/goimagehash"
 	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type matcher struct {
-	downloader ports.MediaDownloader
-	extractor  ports.MediaExtractor
-	threshold  int
+	hashExtractor *hashExtractor
+	threshold     int
 
 	index *LinearIndex
 	store imageHashStore
@@ -25,7 +27,7 @@ type matcher struct {
 
 type imageHashStore interface {
 	load(context.Context) ([]StoredImageHash, error)
-	insert(context.Context, StoredImageHash) (int64, error)
+	Insert(context.Context, pgx.Tx, uuid.UUID, StoredImageHash) (int64, bool, error)
 	close() error
 }
 
@@ -37,10 +39,9 @@ func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor
 	}
 
 	return &matcher{
-		downloader: downloader,
-		extractor:  extractor,
-		threshold:  threshold,
-		index:      NewLinearIndex(buffer),
+		hashExtractor: newHashExtractor(downloader, extractor),
+		threshold:     threshold,
+		index:         NewLinearIndex(buffer),
 	}, nil
 }
 
@@ -75,16 +76,16 @@ func validateMatcherConfig(downloader ports.MediaDownloader, extractor ports.Med
 	const methodCtx = "imagehash/validateMatcherConfig"
 
 	if downloader == nil {
-		return apperrors.New(methodCtx, "загрузчик imagehash-матчера не настроен")
+		return apperrors.New(methodCtx, "загрузчик не настроен")
 	}
 	if extractor == nil {
-		return apperrors.New(methodCtx, "извлекатель imagehash-матчера не настроен")
+		return apperrors.New(methodCtx, "извлекатель не настроен")
 	}
 	if threshold < 0 {
-		return apperrors.New(methodCtx, "порог imagehash-матчера не должен быть отрицательным")
+		return apperrors.New(methodCtx, "порог не должен быть отрицательным")
 	}
 	if buffer < 0 {
-		return apperrors.New(methodCtx, "буфер imagehash-матчера не должен быть отрицательным")
+		return apperrors.New(methodCtx, "буфер не должен быть отрицательным")
 	}
 
 	return nil
@@ -103,74 +104,97 @@ func (m *matcher) Close() error {
 func (m *matcher) IsBlocked(ctx context.Context, chatID int64, content domain.Content) (bool, error) {
 	const methodCtx = "imagehash/matcher.IsBlocked"
 
-	if !m.supports(content) {
-		return false, nil
-	}
-
-	hashes, err := m.hashContent(ctx, content)
+	hashes, err := m.hashExtractor.Extract(ctx, content)
 	if err != nil {
+		if errors.Is(err, ports.ErrUnsupportedContent) {
+			return false, nil
+		}
 		return false, apperrors.Wrap(methodCtx, err)
-	}
-	if len(hashes) == 0 {
-		return false, nil
 	}
 
 	return m.index.Search(chatID, hashes, m.threshold), nil
 }
 
-func (m *matcher) Block(ctx context.Context, chatID int64, content domain.Content) error {
-	const methodCtx = "imagehash/matcher.Block"
+func (m *matcher) PrepareBlock(ctx context.Context, chatID int64, content domain.Content) (ports.PreparedBlock, error) {
+	const methodCtx = "imagehash/matcher.PrepareBlock"
 
-	if !m.supports(content) {
-		return nil
-	}
-	if m.store == nil {
-		return apperrors.New(methodCtx, "хранилище imagehash не настроено")
-	}
-
-	hashes, err := m.hashContent(ctx, content)
+	hashes, err := m.hashExtractor.Extract(ctx, content)
 	if err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	if len(hashes) == 0 {
-		return nil
+		return nil, apperrors.Wrap(methodCtx, err)
 	}
 
-	storedHash := StoredImageHash{
-		ChatID:       chatID,
-		FileUniqueID: content.FileUniqueID,
-		MediaType:    content.Type,
-		Hashes:       hashes,
+	return &preparedBlock{
+		hash: StoredImageHash{
+			ChatID:       chatID,
+			FileUniqueID: content.FileUniqueID,
+			MediaType:    content.Type,
+			Hashes:       hashes,
+		},
+	}, nil
+}
+
+type preparedBlock struct {
+	hash StoredImageHash
+}
+
+func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (bool, error) {
+	const methodCtx = "imagehash/matcher.PersistBlock"
+
+	prepared, ok := block.(*preparedBlock)
+	if !ok {
+		return false, apperrors.New(methodCtx, "неверный тип prepared block imagehash")
 	}
 
-	id, err := m.store.insert(ctx, storedHash)
+	id, created, err := m.store.Insert(ctx, tx, banUID, prepared.hash)
 	if err != nil {
-		return apperrors.Wrap(methodCtx, err)
+		return false, err
 	}
-	storedHash.ID = id
+	prepared.hash.ID = id
+	return created, nil
+}
 
-	m.index.Add(storedHash)
+func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error {
+	const methodCtx = "imagehash/matcher.ApplyBlock"
+
+	prepared, ok := block.(*preparedBlock)
+	if !ok {
+		return apperrors.New(methodCtx, "неверный тип prepared block imagehash")
+	}
+
+	m.index.Add(prepared.hash)
 	return nil
 }
 
-func (m *matcher) supports(content domain.Content) bool {
-	return (content.Type == domain.MediaPhoto ||
-		content.Type == domain.MediaStickerStatic) &&
-		content.CanDownload()
+var _ ports.ContentBlockMatcher = (*matcher)(nil)
+
+type hashExtractor struct {
+	downloader ports.MediaDownloader
+	extractor  ports.MediaExtractor
 }
 
-func (m *matcher) hashContent(ctx context.Context, content domain.Content) ([]uint64, error) {
-	const methodCtx = "imagehash/matcher.hashContent"
+func newHashExtractor(downloader ports.MediaDownloader, extractor ports.MediaExtractor) *hashExtractor {
+	return &hashExtractor{
+		downloader: downloader,
+		extractor:  extractor,
+	}
+}
 
-	media, err := m.downloader.Download(ctx, content)
+func (e *hashExtractor) Extract(ctx context.Context, content domain.Content) ([]uint64, error) {
+	const methodCtx = "imagehash/hashExtractor.Extract"
+
+	if !e.supports(content) {
+		return nil, apperrors.Wrap(methodCtx, ports.ErrUnsupportedContent)
+	}
+
+	media, err := e.downloader.Download(ctx, content)
 	if err != nil {
 		return nil, apperrors.Wrap(methodCtx, err)
 	}
 	if isVideoFile(media.FilePath) {
-		return nil, nil
+		return nil, apperrors.Wrap(methodCtx, ports.ErrUnsupportedContent)
 	}
 
-	extracted, err := m.extractor.Extract(ctx, media, domain.MediaExtractionPlan{
+	extracted, err := e.extractor.Extract(ctx, media, domain.MediaExtractionPlan{
 		MaxFrames: 1,
 	})
 	if err != nil {
@@ -187,6 +211,12 @@ func (m *matcher) hashContent(ctx context.Context, content domain.Content) ([]ui
 	}
 
 	return hashes, nil
+}
+
+func (e *hashExtractor) supports(content domain.Content) bool {
+	return (content.Type == domain.MediaPhoto ||
+		content.Type == domain.MediaStickerStatic) &&
+		content.CanDownload()
 }
 
 func isVideoFile(filePath string) bool {
