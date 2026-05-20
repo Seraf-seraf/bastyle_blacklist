@@ -105,7 +105,7 @@ func main() {
 		}
 	}()
 
-	matchers := []ports.ContentMatcher{exactMatcher, imageHashMatcher}
+	matchers := []ports.ContentBlockMatcher{exactMatcher, imageHashMatcher}
 	videoLikeExtractor, err := media.NewFFmpegFrameExtractor(
 		cfg.MediaConfig.FFmpegBinary,
 		cfg.MediaConfig.FFmpegTimeout.Value(),
@@ -166,6 +166,8 @@ func main() {
 			ImageExtractor: mediaExtractor,
 			VideoExtractor: aiVectorExtractor,
 			Client:         aiVectorClient,
+			ModelName:      cfg.Matching.AIVector.ModelName,
+			ModelRevision:  cfg.Matching.AIVector.ModelRevision,
 			Threshold:      cfg.Matching.AIVector.Threshold,
 			TopK:           cfg.Matching.AIVector.TopK,
 			Plan: domain.MediaExtractionPlan{
@@ -190,7 +192,7 @@ func main() {
 		matchers = append(matchers, aiVectorMatcher)
 	}
 
-	contentMatcher, err := composite.NewMatcher(matchers...)
+	contentMatcher, err := composite.NewMatcher(dbPool, matchers...)
 	if err != nil {
 		panicWithContext(methodCtx, err)
 	}
