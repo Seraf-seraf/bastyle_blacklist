@@ -258,7 +258,8 @@ TRUNCATE TABLE
     ai_vector_frame,
     ai_vector_ban,
     ai_vector_index_state,
-    outbox_events,
+    watermill_offsets_outbox_events,
+    watermill_outbox_events,
     index_checkpoints,
     media_ban
 RESTART IDENTITY CASCADE

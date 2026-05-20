@@ -25,6 +25,39 @@ database:
   migration:
     enabled: true
 
+rabbitmq:
+  url: "amqp://guest:guest@bastyle-rabbitmq:5672/"
+  exchange: "bastyle.events"
+  exchange_type: "topic"
+  publish_timeout: 5s
+  reconnect_interval: 5s
+
+outbox_publisher:
+  enabled: true
+  instance_id: ""
+  batch_size: 50
+  poll_interval: 1s
+  idle_interval: 5s
+  lock_ttl: 30s
+  retry_base_delay: 5s
+  retry_max_delay: 10m
+  max_attempts: 20
+
+consumers:
+  index_events:
+    enabled: false
+    queue: "bastyle.index-events"
+    routing_keys:
+      - "media.ban.created.v1"
+    prefetch: 10
+    retry_delay: 5s
+
+metrics:
+  enabled: true
+  host: "127.0.0.1"
+  port: 9090
+  path: "/metrics"
+
 media_config:
   max_animation_duration: 10s
   max_video_sticker_duration: 3s

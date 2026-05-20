@@ -1,26 +1,28 @@
 -- +goose Up
-CREATE TABLE IF NOT EXISTS outbox_events (
-    id BIGSERIAL PRIMARY KEY,
-    event_uid UUID NOT NULL UNIQUE,
-    event_type TEXT NOT NULL,
-    aggregate_type TEXT NOT NULL,
-    aggregate_uid UUID NOT NULL,
-    payload JSONB NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT NULL,
-    next_retry_at TIMESTAMPTZ NULL,
-    locked_until TIMESTAMPTZ NULL,
-    locked_by TEXT NULL,
-    published_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS watermill_outbox_events (
+    "offset" BIGSERIAL,
+    uuid VARCHAR(36) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payload BYTEA DEFAULT NULL,
+    metadata JSON DEFAULT NULL,
+    transaction_id xid8 NOT NULL,
+    PRIMARY KEY (transaction_id, "offset")
 );
 
-CREATE INDEX IF NOT EXISTS outbox_events_unpublished_idx
-ON outbox_events(published_at, next_retry_at, id)
-WHERE published_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS watermill_outbox_events_uuid_idx
+ON watermill_outbox_events(uuid);
 
-CREATE INDEX IF NOT EXISTS outbox_events_aggregate_idx
-ON outbox_events(aggregate_uid, id);
+CREATE INDEX IF NOT EXISTS watermill_outbox_events_created_at_idx
+ON watermill_outbox_events(created_at);
+
+CREATE TABLE IF NOT EXISTS watermill_offsets_outbox_events (
+    consumer_group VARCHAR(255) NOT NULL,
+    offset_acked BIGINT,
+    last_processed_transaction_id xid8 NOT NULL,
+    PRIMARY KEY (consumer_group)
+);
 
 -- +goose Down
-DROP TABLE IF EXISTS outbox_events;
+DROP TABLE IF EXISTS watermill_offsets_outbox_events;
+DROP TABLE IF EXISTS watermill_outbox_events;
+DROP INDEX IF EXISTS watermill_outbox_events_created_at_idx;

@@ -24,7 +24,7 @@ Telegram / Actor
               -> media_ban
               -> matcher artifacts
               -> ai_vector data
-              -> outbox_events
+              -> watermill_outbox_events
               -> index_checkpoints
           -> local exact/imagehash/videolike indexes
           -> RabbitMQ publisher/consumer
@@ -75,10 +75,10 @@ PostgreSQL replication в этой архитектуре не является 
 3. Реплика проверяет права администратора и извлекает признаки медиа.
 4. Реплика открывает транзакцию в PostgreSQL primary.
 5. В одной транзакции сохраняются `media_ban`, matcher artifacts, AI-vector
-   данные и запись `outbox_events` с событием `media.ban.created.v1`.
-6. После commit outbox publisher публикует событие в RabbitMQ.
+   данные и Watermill outbox-сообщение с событием `media.ban.created.v1`.
+6. После commit Watermill Forwarder публикует событие в RabbitMQ.
 7. Все реплики получают сигнал и догоняют свои локальные индексы по
-   `outbox_events` из PostgreSQL.
+   PostgreSQL outbox из `watermill_outbox_events`.
 8. Если реплика пропустила событие или индекс стал сомнительным, индекс
    помечается stale и пересобирается из PostgreSQL.
 
@@ -97,5 +97,5 @@ PostgreSQL replication в этой архитектуре не является 
 
 Локальный индекс не считается источником истины. Если индекс поврежден, отстал
 или его checkpoint нельзя доверять, он пересобирается из PostgreSQL active bans.
-После успешного rebuild checkpoint выставляется на актуальный
-`max(outbox_events.id)` для использованного snapshot.
+После успешного rebuild checkpoint выставляется на актуальную позицию
+PostgreSQL outbox для использованного snapshot.

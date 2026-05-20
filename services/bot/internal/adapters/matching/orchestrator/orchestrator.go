@@ -15,6 +15,7 @@ import (
 
 type BlockOrchestrator struct {
 	db       *postgres.Pool
+	outbox   ports.OutboxWriter
 	handlers []ports.ContentBlockMatcher
 }
 
@@ -30,11 +31,14 @@ type preparedHandlerBlock struct {
 	block   ports.PreparedBlock
 }
 
-func NewBlockOrchestrator(db *postgres.Pool, handlers ...ports.ContentBlockMatcher) (ports.ContentBlocker, error) {
+func NewBlockOrchestrator(db *postgres.Pool, outbox ports.OutboxWriter, handlers ...ports.ContentBlockMatcher) (ports.ContentBlocker, error) {
 	const methodCtx = "orchestrator/NewBlockOrchestrator"
 
 	if db == nil {
 		return nil, apperrors.New(methodCtx, "PostgreSQL pool не настроен")
+	}
+	if outbox == nil {
+		return nil, apperrors.New(methodCtx, "outbox writer не настроен")
 	}
 	if len(handlers) == 0 {
 		return nil, apperrors.New(methodCtx, "требуется хотя бы один матчер")
@@ -48,6 +52,7 @@ func NewBlockOrchestrator(db *postgres.Pool, handlers ...ports.ContentBlockMatch
 
 	return &BlockOrchestrator{
 		db:       db,
+		outbox:   outbox,
 		handlers: handlers,
 	}, nil
 }
@@ -91,7 +96,7 @@ func (o *BlockOrchestrator) Block(ctx context.Context, chatID int64, content dom
 		if !created {
 			return deleteEmptyMediaBan(ctx, tx, banUID)
 		}
-		if err := insertOutboxEvent(ctx, tx, banUID, banCreatedPayload{
+		if err := o.saveBanCreatedEvent(ctx, tx, banUID, banCreatedPayload{
 			BanUID:       banUID.String(),
 			ChatID:       chatID,
 			MediaType:    string(content.Type),
@@ -158,19 +163,21 @@ WHERE mb.ban_uid = $1
 	return apperrors.Wrap(methodCtx, err)
 }
 
-func insertOutboxEvent(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, payload banCreatedPayload) error {
-	const methodCtx = "orchestrator/insertOutboxEvent"
+func (o *BlockOrchestrator) saveBanCreatedEvent(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, payload banCreatedPayload) error {
+	const methodCtx = "orchestrator/BlockOrchestrator.saveBanCreatedEvent"
 
 	rawPayload, err := json.Marshal(payload)
 	if err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
 
-	_, err = tx.Exec(ctx, `
-INSERT INTO outbox_events (event_uid, event_type, aggregate_type, aggregate_uid, payload)
-VALUES ($1, $2, $3, $4, $5)
-`, uuid.New(), "media.ban.created.v1", "media_ban", banUID, rawPayload)
-	return apperrors.Wrap(methodCtx, err)
+	return o.outbox.Save(ctx, tx, ports.NewOutboxEvent{
+		EventUID:      uuid.New(),
+		EventType:     "media.ban.created.v1",
+		AggregateType: "media_ban",
+		AggregateUID:  banUID,
+		Payload:       rawPayload,
+	})
 }
 
 var _ ports.ContentBlocker = (*BlockOrchestrator)(nil)

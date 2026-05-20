@@ -31,6 +31,35 @@ database:
   statement_timeout: 11s
   migration:
     enabled: false
+rabbitmq:
+  url: "amqp://user:pass@rabbitmq:5672/"
+  exchange: "test.events"
+  exchange_type: "direct"
+  publish_timeout: 4s
+  reconnect_interval: 6s
+outbox_publisher:
+  enabled: true
+  instance_id: "test-publisher"
+  batch_size: 11
+  poll_interval: 2s
+  idle_interval: 3s
+  lock_ttl: 15s
+  retry_base_delay: 7s
+  retry_max_delay: 1m
+  max_attempts: 9
+consumers:
+  index_events:
+    enabled: true
+    queue: "test.index-events"
+    routing_keys:
+      - "media.ban.created.v1"
+    prefetch: 4
+    retry_delay: 8s
+metrics:
+  enabled: true
+  host: "127.0.0.1"
+  port: 19090
+  path: "/custom_metrics"
 jobs_buffer: 20
 media_config:
   max_animation_duration: 9s
@@ -128,6 +157,54 @@ matching:
 	}
 	if cfg.Database.Migration.Enabled {
 		t.Fatal("ожидалось, что миграции БД будут выключены")
+	}
+	if cfg.RabbitMQ.URL != "amqp://user:pass@rabbitmq:5672/" {
+		t.Fatalf("неожиданное значение RabbitMQ URL: %q", cfg.RabbitMQ.URL)
+	}
+	if cfg.RabbitMQ.Exchange != "test.events" {
+		t.Fatalf("неожиданное значение RabbitMQ exchange: %q", cfg.RabbitMQ.Exchange)
+	}
+	if cfg.RabbitMQ.ExchangeType != "direct" {
+		t.Fatalf("неожиданное значение RabbitMQ exchange type: %q", cfg.RabbitMQ.ExchangeType)
+	}
+	if cfg.RabbitMQ.PublishTimeout.Value() != 4*time.Second {
+		t.Fatalf("неожиданное значение RabbitMQ publish timeout: %s", cfg.RabbitMQ.PublishTimeout.Value())
+	}
+	if cfg.RabbitMQ.ReconnectInterval.Value() != 6*time.Second {
+		t.Fatalf("неожиданное значение RabbitMQ reconnect interval: %s", cfg.RabbitMQ.ReconnectInterval.Value())
+	}
+	if cfg.OutboxPublisher.InstanceID != "test-publisher" {
+		t.Fatalf("неожиданное значение outbox publisher instance_id: %q", cfg.OutboxPublisher.InstanceID)
+	}
+	if cfg.OutboxPublisher.BatchSize != 11 {
+		t.Fatalf("неожиданное значение outbox publisher batch_size: %d", cfg.OutboxPublisher.BatchSize)
+	}
+	if cfg.OutboxPublisher.PollInterval.Value() != 2*time.Second {
+		t.Fatalf("неожиданное значение outbox publisher poll_interval: %s", cfg.OutboxPublisher.PollInterval.Value())
+	}
+	if cfg.OutboxPublisher.LockTTL.Value() != 15*time.Second {
+		t.Fatalf("неожиданное значение outbox publisher lock_ttl: %s", cfg.OutboxPublisher.LockTTL.Value())
+	}
+	if cfg.OutboxPublisher.RetryMaxDelay.Value() != time.Minute {
+		t.Fatalf("неожиданное значение outbox publisher retry_max_delay: %s", cfg.OutboxPublisher.RetryMaxDelay.Value())
+	}
+	if cfg.OutboxPublisher.MaxAttempts != 9 {
+		t.Fatalf("неожиданное значение outbox publisher max_attempts: %d", cfg.OutboxPublisher.MaxAttempts)
+	}
+	if !cfg.Consumers.IndexEvents.Enabled {
+		t.Fatal("ожидалось, что index_events consumer будет включен")
+	}
+	if cfg.Consumers.IndexEvents.Queue != "test.index-events" {
+		t.Fatalf("неожиданное значение index_events queue: %q", cfg.Consumers.IndexEvents.Queue)
+	}
+	if cfg.Consumers.IndexEvents.Prefetch != 4 {
+		t.Fatalf("неожиданное значение index_events prefetch: %d", cfg.Consumers.IndexEvents.Prefetch)
+	}
+	if cfg.Metrics.Address() != "127.0.0.1:19090" {
+		t.Fatalf("неожиданное значение metrics address: %q", cfg.Metrics.Address())
+	}
+	if cfg.Metrics.Path != "/custom_metrics" {
+		t.Fatalf("неожиданное значение metrics path: %q", cfg.Metrics.Path)
 	}
 	if cfg.JobsBuffer != 20 {
 		t.Fatalf("неожиданное значение буфер задач: %d", cfg.JobsBuffer)
@@ -273,6 +350,30 @@ telegram:
 	}
 	if !cfg.Database.Migration.Enabled {
 		t.Fatal("ожидалось, что миграции БД по умолчанию будут включены")
+	}
+	if cfg.RabbitMQ.URL != "amqp://guest:guest@bastyle-rabbitmq:5672/" {
+		t.Fatalf("неожиданное значение по умолчанию: RabbitMQ URL: %q", cfg.RabbitMQ.URL)
+	}
+	if cfg.RabbitMQ.Exchange != "bastyle.events" {
+		t.Fatalf("неожиданное значение по умолчанию: RabbitMQ exchange: %q", cfg.RabbitMQ.Exchange)
+	}
+	if cfg.RabbitMQ.ExchangeType != "topic" {
+		t.Fatalf("неожиданное значение по умолчанию: RabbitMQ exchange type: %q", cfg.RabbitMQ.ExchangeType)
+	}
+	if !cfg.OutboxPublisher.Enabled {
+		t.Fatal("ожидалось, что outbox publisher по умолчанию будет включен")
+	}
+	if cfg.OutboxPublisher.BatchSize != 50 {
+		t.Fatalf("неожиданное значение по умолчанию: outbox batch_size: %d", cfg.OutboxPublisher.BatchSize)
+	}
+	if cfg.OutboxPublisher.RetryMaxDelay.Value() != 10*time.Minute {
+		t.Fatalf("неожиданное значение по умолчанию: outbox retry_max_delay: %s", cfg.OutboxPublisher.RetryMaxDelay.Value())
+	}
+	if cfg.Consumers.IndexEvents.Enabled {
+		t.Fatal("ожидалось, что index_events consumer по умолчанию будет выключен")
+	}
+	if cfg.Metrics.Path != "/metrics" {
+		t.Fatalf("неожиданное значение по умолчанию: metrics path: %q", cfg.Metrics.Path)
 	}
 	if cfg.Matching.Exact.Buffer != 500 {
 		t.Fatalf("неожиданное значение по умолчанию: exact буфер: %d", cfg.Matching.Exact.Buffer)
@@ -524,6 +625,82 @@ telegram:
 				t.Fatal("ожидалось: ошибка")
 			}
 		})
+	}
+}
+
+func TestLoadRejectsInvalidOutboxPublisherConfig(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "токен"
+outbox_publisher:
+  batch_size: 0
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("ожидалось: ошибка")
+	}
+}
+
+func TestLoadRejectsMissingRabbitMQURLWhenOutboxEnabled(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "токен"
+rabbitmq:
+  url: ""
+outbox_publisher:
+  enabled: true
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("ожидалось: ошибка")
+	}
+}
+
+func TestLoadAllowsMissingRabbitMQURLWhenOutboxDisabled(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "токен"
+rabbitmq:
+  url: ""
+outbox_publisher:
+  enabled: false
+`)
+
+	if _, err := Load(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadRejectsInvalidEnabledConsumerConfig(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "токен"
+consumers:
+  index_events:
+    enabled: true
+    queue: ""
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("ожидалось: ошибка")
+	}
+}
+
+func TestLoadRejectsInvalidMetricsConfig(t *testing.T) {
+	path := writeConfig(t, `
+telegram:
+  token: "токен"
+metrics:
+  enabled: true
+  path: metrics
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("ожидалось: ошибка")
 	}
 }
 

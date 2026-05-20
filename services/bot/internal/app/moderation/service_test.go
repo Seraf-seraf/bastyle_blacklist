@@ -17,6 +17,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/orchestrator"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/videolike"
+	outboxpostgres "github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/outbox/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
@@ -272,6 +273,17 @@ func TestServiceFunctionalStoresBanArtifactsInPostgres(t *testing.T) {
 
 	handleBanCommand(t, ctx, service, 100, 10, 20, photoBan)
 	handleBanCommand(t, ctx, service, 100, 30, 40, videoBan)
+	outboxStore, err := outboxpostgres.NewStore(db.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
+	outboxStats, err := outboxStore.Stats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outboxStats.UnpublishedCount != 2 {
+		t.Fatalf("ожидалось 2 outbox-события, получили: %d", outboxStats.UnpublishedCount)
+	}
 	closeMatchers()
 
 	reloadedActions := &fakeActions{}
@@ -348,9 +360,14 @@ func newFunctionalService(
 	if err != nil {
 		t.Fatal(err)
 	}
+	outboxStore, err := outboxpostgres.NewStore(db.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	blocker, err := orchestrator.NewBlockOrchestrator(
 		db,
+		outboxStore,
 		[]ports.ContentBlockMatcher{exactMatcher, imageHashMatcher, videoLikeMatcher}...,
 	)
 	if err != nil {

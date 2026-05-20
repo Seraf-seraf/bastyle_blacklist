@@ -19,10 +19,14 @@ const (
 )
 
 type Config struct {
-	Telegram Telegram `yaml:"telegram"`
-	Workers  int      `yaml:"workers"`
-	Health   Health   `yaml:"health"`
-	Database Database `yaml:"database"`
+	Telegram        Telegram        `yaml:"telegram"`
+	Workers         int             `yaml:"workers"`
+	Health          Health          `yaml:"health"`
+	Database        Database        `yaml:"database"`
+	RabbitMQ        RabbitMQ        `yaml:"rabbitmq"`
+	OutboxPublisher OutboxPublisher `yaml:"outbox_publisher"`
+	Consumers       Consumers       `yaml:"consumers"`
+	Metrics         Metrics         `yaml:"metrics"`
 
 	JobsBuffer  int         `yaml:"jobs_buffer"`
 	MediaConfig MediaConfig `yaml:"media_config"`
@@ -60,6 +64,45 @@ type Database struct {
 
 type DatabaseMigration struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+type RabbitMQ struct {
+	URL               string   `yaml:"url"`
+	Exchange          string   `yaml:"exchange"`
+	ExchangeType      string   `yaml:"exchange_type"`
+	PublishTimeout    Duration `yaml:"publish_timeout"`
+	ReconnectInterval Duration `yaml:"reconnect_interval"`
+}
+
+type OutboxPublisher struct {
+	Enabled        bool     `yaml:"enabled"`
+	InstanceID     string   `yaml:"instance_id"`
+	BatchSize      int      `yaml:"batch_size"`
+	PollInterval   Duration `yaml:"poll_interval"`
+	IdleInterval   Duration `yaml:"idle_interval"`
+	LockTTL        Duration `yaml:"lock_ttl"`
+	RetryBaseDelay Duration `yaml:"retry_base_delay"`
+	RetryMaxDelay  Duration `yaml:"retry_max_delay"`
+	MaxAttempts    int      `yaml:"max_attempts"`
+}
+
+type Consumers struct {
+	IndexEvents Consumer `yaml:"index_events"`
+}
+
+type Consumer struct {
+	Enabled     bool     `yaml:"enabled"`
+	Queue       string   `yaml:"queue"`
+	RoutingKeys []string `yaml:"routing_keys"`
+	Prefetch    int      `yaml:"prefetch"`
+	RetryDelay  Duration `yaml:"retry_delay"`
+}
+
+type Metrics struct {
+	Enabled bool   `yaml:"enabled"`
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port"`
+	Path    string `yaml:"path"`
 }
 
 type Matching struct {
@@ -176,6 +219,10 @@ func (h Health) Address() string {
 	return net.JoinHostPort(h.Host, strconv.Itoa(h.Port))
 }
 
+func (m Metrics) Address() string {
+	return net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
+}
+
 func (s AIVectorService) URL() string {
 	return "http://" + net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 }
@@ -226,6 +273,38 @@ func defaultConfig() Config {
 			Migration: DatabaseMigration{
 				Enabled: true,
 			},
+		},
+		RabbitMQ: RabbitMQ{
+			URL:               "amqp://guest:guest@bastyle-rabbitmq:5672/",
+			Exchange:          "bastyle.events",
+			ExchangeType:      "topic",
+			PublishTimeout:    Duration(5 * time.Second),
+			ReconnectInterval: Duration(5 * time.Second),
+		},
+		OutboxPublisher: OutboxPublisher{
+			Enabled:        true,
+			BatchSize:      50,
+			PollInterval:   Duration(time.Second),
+			IdleInterval:   Duration(5 * time.Second),
+			LockTTL:        Duration(30 * time.Second),
+			RetryBaseDelay: Duration(5 * time.Second),
+			RetryMaxDelay:  Duration(10 * time.Minute),
+			MaxAttempts:    20,
+		},
+		Consumers: Consumers{
+			IndexEvents: Consumer{
+				Enabled:     false,
+				Queue:       "bastyle.index-events",
+				RoutingKeys: []string{"media.ban.created.v1"},
+				Prefetch:    10,
+				RetryDelay:  Duration(5 * time.Second),
+			},
+		},
+		Metrics: Metrics{
+			Enabled: true,
+			Host:    "127.0.0.1",
+			Port:    9090,
+			Path:    "/metrics",
 		},
 		JobsBuffer:  100,
 		MediaConfig: defaultMediaConfig(),
@@ -320,6 +399,20 @@ func (c Config) validate() error {
 	if err := c.Database.validate(); err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
+	if c.OutboxPublisher.Enabled {
+		if err := c.RabbitMQ.validate(); err != nil {
+			return apperrors.Wrap(methodCtx, err)
+		}
+	}
+	if err := c.OutboxPublisher.validate(); err != nil {
+		return apperrors.Wrap(methodCtx, err)
+	}
+	if err := c.Consumers.IndexEvents.validate("index_events"); err != nil {
+		return apperrors.Wrap(methodCtx, err)
+	}
+	if err := c.Metrics.validate(); err != nil {
+		return apperrors.Wrap(methodCtx, err)
+	}
 	if c.Matching.Exact.Buffer <= 0 {
 		return apperrors.New(methodCtx, "буфер exact-матчера должен быть положительным")
 	}
@@ -344,6 +437,99 @@ func (c Config) validate() error {
 	if err := validateFrameMatchRule("video-like matcher", c.Matching.VideoLike.MinMatchedFrames, c.Matching.VideoLike.MinMatchedRatio); err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
+	return nil
+}
+
+func (c RabbitMQ) validate() error {
+	const methodCtx = "config/RabbitMQ.validate"
+
+	if c.URL == "" {
+		return apperrors.New(methodCtx, "RabbitMQ URL обязателен")
+	}
+	if c.Exchange == "" {
+		return apperrors.New(methodCtx, "RabbitMQ exchange обязателен")
+	}
+	switch c.ExchangeType {
+	case "topic", "direct", "fanout", "headers":
+	default:
+		return apperrors.New(methodCtx, "тип RabbitMQ exchange должен быть topic, direct, fanout или headers")
+	}
+	if c.PublishTimeout.Value() <= 0 {
+		return apperrors.New(methodCtx, "таймаут публикации RabbitMQ должен быть положительным")
+	}
+	if c.ReconnectInterval.Value() <= 0 {
+		return apperrors.New(methodCtx, "интервал reconnect RabbitMQ должен быть положительным")
+	}
+
+	return nil
+}
+
+func (c OutboxPublisher) validate() error {
+	const methodCtx = "config/OutboxPublisher.validate"
+
+	if !c.Enabled {
+		return nil
+	}
+	if c.BatchSize <= 0 {
+		return apperrors.New(methodCtx, "размер пачки outbox publisher-а должен быть положительным")
+	}
+	if c.PollInterval.Value() <= 0 {
+		return apperrors.New(methodCtx, "интервал опроса outbox publisher-а должен быть положительным")
+	}
+	if c.IdleInterval.Value() <= 0 {
+		return apperrors.New(methodCtx, "idle-интервал outbox publisher-а должен быть положительным")
+	}
+	if c.LockTTL.Value() <= 0 {
+		return apperrors.New(methodCtx, "TTL блокировки outbox publisher-а должен быть положительным")
+	}
+	if c.RetryBaseDelay.Value() <= 0 {
+		return apperrors.New(methodCtx, "базовая задержка retry outbox publisher-а должна быть положительной")
+	}
+	if c.RetryMaxDelay.Value() < c.RetryBaseDelay.Value() {
+		return apperrors.New(methodCtx, "максимальная задержка retry outbox publisher-а должна быть не меньше базовой")
+	}
+	if c.MaxAttempts <= 0 {
+		return apperrors.New(methodCtx, "максимальное количество попыток outbox publisher-а должно быть положительным")
+	}
+
+	return nil
+}
+
+func (c Consumer) validate(name string) error {
+	const methodCtx = "config/Consumer.validate"
+
+	if !c.Enabled {
+		return nil
+	}
+	if c.Queue == "" {
+		return apperrors.New(methodCtx, name+": queue consumer-а обязательна")
+	}
+	if c.Prefetch <= 0 {
+		return apperrors.New(methodCtx, name+": prefetch consumer-а должен быть положительным")
+	}
+	if c.RetryDelay.Value() <= 0 {
+		return apperrors.New(methodCtx, name+": retry delay consumer-а должен быть положительным")
+	}
+
+	return nil
+}
+
+func (m Metrics) validate() error {
+	const methodCtx = "config/Metrics.validate"
+
+	if !m.Enabled {
+		return nil
+	}
+	if m.Host == "" {
+		return apperrors.New(methodCtx, "хост metrics-сервера обязателен")
+	}
+	if m.Port <= 0 {
+		return apperrors.New(methodCtx, "порт metrics-сервера должен быть положительным")
+	}
+	if m.Path == "" || m.Path[0] != '/' {
+		return apperrors.New(methodCtx, "путь metrics-сервера должен начинаться с /")
+	}
+
 	return nil
 }
 

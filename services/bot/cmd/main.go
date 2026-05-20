@@ -21,12 +21,18 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/orchestrator"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/videolike"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/media"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/messaging/rabbitmq"
+	outboxpostgres "github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/outbox/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/outboxpublisher"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/logging"
+	"github.com/ThreeDotsLabs/watermill"
+	watermillsql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -45,20 +51,24 @@ func main() {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	dbPool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	defer func() {
 		dbPool.Close()
 		log.Println("PostgreSQL pool закрыт")
 	}()
+	outboxStore, err := outboxpostgres.NewStore(dbPool.Raw())
+	if err != nil {
+		logging.Panic(methodCtx, err)
+	}
 
 	bot, err := newTelegramBot(cfg)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 
 	log.Printf("Авторизован как %s", bot.Self.UserName)
@@ -75,11 +85,11 @@ func main() {
 
 	exactMatcher, err := exact.NewPostgresMatcher(ctx, dbPool.Raw(), cfg.Matching.Exact.Buffer)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	mediaDownloader, err := telegram.NewFileDownloader(bot)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	mediaExtractor := media.NewExtractor()
 	imageHashMatcher, err := imagehash.NewPostgresMatcher(
@@ -91,17 +101,17 @@ func main() {
 		cfg.Matching.ImageHash.Buffer,
 	)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	defer func() {
 		if err := imageHashMatcher.Close(); err != nil {
-			logError(methodCtx, err)
+			logging.Error(methodCtx, err)
 		}
 	}()
 
 	defer func() {
 		if err := exactMatcher.Close(); err != nil {
-			logError(methodCtx, err)
+			logging.Error(methodCtx, err)
 		}
 	}()
 
@@ -111,7 +121,7 @@ func main() {
 		cfg.MediaConfig.FFmpegTimeout.Value(),
 	)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	videoLikeMatcher, err := videolike.NewPostgresMatcher(
 		ctx,
@@ -137,11 +147,11 @@ func main() {
 		},
 	)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	defer func() {
 		if err := videoLikeMatcher.Close(); err != nil {
-			logError(methodCtx, err)
+			logging.Error(methodCtx, err)
 		}
 	}()
 	matchers = append(matchers, videoLikeMatcher)
@@ -152,14 +162,14 @@ func main() {
 			cfg.Matching.AIVector.RequestTimeout.Value(),
 		)
 		if err != nil {
-			panicWithContext(methodCtx, err)
+			logging.Panic(methodCtx, err)
 		}
 		aiVectorExtractor, err := media.NewFFmpegFrameExtractor(
 			cfg.MediaConfig.FFmpegBinary,
 			cfg.MediaConfig.FFmpegTimeout.Value(),
 		)
 		if err != nil {
-			panicWithContext(methodCtx, err)
+			logging.Panic(methodCtx, err)
 		}
 		aiVectorMatcher, err := aivector.NewMatcher(aivector.Options{
 			Downloader:          mediaDownloader,
@@ -187,39 +197,112 @@ func main() {
 			},
 		})
 		if err != nil {
-			panicWithContext(methodCtx, err)
+			logging.Panic(methodCtx, err)
 		}
 		matchers = append(matchers, aiVectorMatcher)
 	}
 
-	contentMatcher, err := orchestrator.NewBlockOrchestrator(dbPool, matchers...)
+	contentMatcher, err := orchestrator.NewBlockOrchestrator(dbPool, outboxStore, matchers...)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	actions, err := telegram.NewBotActions(bot)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 	admin, err := telegram.NewAdminChecker(bot)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 
 	service, err := moderation.NewService(contentMatcher, admin, actions)
 	if err != nil {
-		panicWithContext(methodCtx, err)
+		logging.Panic(methodCtx, err)
 	}
 
 	if cfg.Health.Enabled {
 		healthServer, err := startHealthServer(ctx, cfg.Health.Address(), dbPool.Ping)
 		if err != nil {
-			panicWithContext(methodCtx, err)
+			logging.Panic(methodCtx, err)
 		}
 		defer func() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := healthServer.Shutdown(shutdownCtx); err != nil {
-				logError(methodCtx, err)
+				logging.Error(methodCtx, err)
+			}
+		}()
+	}
+
+	if cfg.OutboxPublisher.Enabled {
+		watermillLogger := watermill.NopLogger{}
+		rabbitPublisher, err := rabbitmq.NewPublisher(rabbitmq.Config{
+			URL:               cfg.RabbitMQ.URL,
+			Exchange:          cfg.RabbitMQ.Exchange,
+			ExchangeType:      cfg.RabbitMQ.ExchangeType,
+			PublishTimeout:    cfg.RabbitMQ.PublishTimeout.Value(),
+			ReconnectInterval: cfg.RabbitMQ.ReconnectInterval.Value(),
+		}, watermillLogger)
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		defer func() {
+			if err := rabbitPublisher.Close(); err != nil {
+				logging.Error(methodCtx, err)
+			}
+		}()
+
+		ackDeadline := cfg.RabbitMQ.PublishTimeout.Value()
+		sqlSubscriber, err := watermillsql.NewSubscriber(watermillsql.BeginnerFromPgx(dbPool.Raw()), watermillsql.SubscriberConfig{
+			ConsumerGroup:    outboxpostgres.ForwarderConsumerGroup,
+			AckDeadline:      &ackDeadline,
+			PollInterval:     cfg.OutboxPublisher.PollInterval.Value(),
+			ResendInterval:   cfg.OutboxPublisher.RetryBaseDelay.Value(),
+			RetryInterval:    cfg.OutboxPublisher.RetryBaseDelay.Value(),
+			SchemaAdapter:    outboxpostgres.NewWatermillSchema(cfg.OutboxPublisher.BatchSize),
+			OffsetsAdapter:   outboxpostgres.NewWatermillOffsetsAdapter(),
+			InitializeSchema: false,
+		}, watermillLogger)
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		defer func() {
+			if err := sqlSubscriber.Close(); err != nil {
+				logging.Error(methodCtx, err)
+			}
+		}()
+
+		publisher, err := outboxpublisher.New(sqlSubscriber, rabbitPublisher, watermillLogger, outboxpublisher.Config{
+			ForwarderTopic: outboxpostgres.ForwarderTopic,
+			CloseTimeout:   cfg.OutboxPublisher.LockTTL.Value(),
+		})
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		defer func() {
+			if err := publisher.Close(); err != nil {
+				logging.Error(methodCtx, err)
+			}
+		}()
+
+		go func() {
+			if err := publisher.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logging.Error(methodCtx, err)
+			}
+		}()
+		log.Println("Watermill outbox publisher запущен")
+	}
+
+	if cfg.Metrics.Enabled {
+		metricsServer, err := startMetricsServer(ctx, cfg.Metrics, outboxStore)
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+				logging.Error(methodCtx, err)
 			}
 		}()
 	}
@@ -277,14 +360,14 @@ func startHealthServer(ctx context.Context, address string, readiness readinessC
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			logError(methodCtx, err)
+			logging.Error(methodCtx, err)
 		}
 	}()
 
 	go func() {
 		log.Printf("Health-сервер слушает %s", address)
 		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logError(methodCtx, err)
+			logging.Error(methodCtx, err)
 		}
 	}()
 
@@ -298,7 +381,7 @@ func writeReadinessStatus(ctx context.Context, w http.ResponseWriter, readiness 
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		if err := readiness(checkCtx); err != nil {
-			logError(methodCtx, err)
+			logging.Error(methodCtx, err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"status":"unavailable"}`))
@@ -353,16 +436,8 @@ func worker(ctx context.Context, jobs <-chan Job, service moderationService) {
 
 			message := telegram.MessageFromTelegram(msg)
 			if err := service.HandleMessage(ctx, message); err != nil {
-				logError(methodCtx, err)
+				logging.Error(methodCtx, err)
 			}
 		}
 	}
-}
-
-func logError(methodCtx string, err error) {
-	log.Printf("[ERROR]: %s: %s", methodCtx, err)
-}
-
-func panicWithContext(methodCtx string, err error) {
-	log.Panicf("[ERROR]: %s: %s", methodCtx, err)
 }

@@ -1,12 +1,12 @@
 services:
   bastyle-blacklist:
     build:
-      context: .
+      context: ..
       dockerfile: infra/docker/Dockerfile.bot
     image: bastyle-blacklist:local
     restart: unless-stopped
     volumes:
-      - ./infra/config/config.yaml:/etc/bastyle/config.yaml:ro
+      - ./config/config.yaml:/etc/bastyle/config.yaml:ro
       - bastyle-data:/var/lib/bastyle
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
@@ -19,15 +19,17 @@ services:
         limits:
           cpus: "4"
           memory: 512M
+    depends_on:
+      - bastyle-rabbitmq
 
   bastyle-aimatcher:
     build:
-      context: .
+      context: ..
       dockerfile: infra/docker/Dockerfile.aimatcher
     image: bastyle-aimatcher:local
     restart: unless-stopped
     volumes:
-      - ./infra/config/config.yaml:/app/infra/config/config.yaml:ro
+      - ./config/config.yaml:/app/infra/config/config.yaml:ro
       - bastyle-data:/var/lib/bastyle
     healthcheck:
       test:
@@ -47,5 +49,26 @@ services:
           cpus: "4"
           memory: 2G
 
+  bastyle-rabbitmq:
+    image: rabbitmq:4.1.1-management
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - bastyle-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+
 volumes:
   bastyle-data:
+  bastyle-rabbitmq:

@@ -12,6 +12,7 @@ import (
 )
 
 type fakeBlocker struct{}
+type fakeOutboxWriter struct{}
 
 func (fakeBlocker) IsBlocked(context.Context, int64, domain.Content) (bool, error) {
 	return false, nil
@@ -29,22 +30,33 @@ func (fakeBlocker) ApplyBlock(context.Context, ports.PreparedBlock) error {
 	return nil
 }
 
+func (fakeOutboxWriter) Save(context.Context, pgx.Tx, ports.NewOutboxEvent) error {
+	return nil
+}
+
 func TestNewMatcherRejectsNilDB(t *testing.T) {
-	_, err := NewBlockOrchestrator(nil, fakeBlocker{})
+	_, err := NewBlockOrchestrator(nil, fakeOutboxWriter{}, fakeBlocker{})
 	if err == nil {
 		t.Fatal("ожидалась ошибка для пустого PostgreSQL pool")
 	}
 }
 
+func TestNewMatcherRejectsNilOutbox(t *testing.T) {
+	_, err := NewBlockOrchestrator(&postgres.Pool{}, nil, fakeBlocker{})
+	if err == nil {
+		t.Fatal("ожидалась ошибка для пустого outbox writer")
+	}
+}
+
 func TestNewMatcherRejectsEmptyList(t *testing.T) {
-	_, err := NewBlockOrchestrator(&postgres.Pool{})
+	_, err := NewBlockOrchestrator(&postgres.Pool{}, fakeOutboxWriter{})
 	if err == nil {
 		t.Fatal("ожидалась ошибка для пустого списка matcher-ов")
 	}
 }
 
 func TestNewMatcherRejectsNilMatcher(t *testing.T) {
-	_, err := NewBlockOrchestrator(&postgres.Pool{}, fakeBlocker{}, nil)
+	_, err := NewBlockOrchestrator(&postgres.Pool{}, fakeOutboxWriter{}, fakeBlocker{}, nil)
 	if err == nil {
 		t.Fatal("ожидалось, что матчер равен nil будет отклонен")
 	}
