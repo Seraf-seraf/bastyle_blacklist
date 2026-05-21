@@ -398,6 +398,87 @@ func TestServiceFunctionalCatchUpAppliesBanEventToRuntimeIndex(t *testing.T) {
 	}
 }
 
+func TestServiceFunctionalCatchUpAfterBootstrapKeepsRuntimeIndexesConsistent(t *testing.T) {
+	ctx := context.Background()
+	db := newFunctionalPostgresPool(t, ctx)
+	applyFunctionalPostgresMigrations(t, ctx, db.Raw())
+
+	media := functionalMedia{
+		images: map[string]image.Image{
+			"photo-original": e2EPatternImage(color.RGBA{R: 220, G: 40, B: 40, A: 255}),
+			"photo-variant":  e2EVariantImage(color.RGBA{R: 220, G: 40, B: 40, A: 255}),
+			"video-original": functionalFrameImage(color.RGBA{B: 220, A: 255}),
+			"video-query":    functionalFrameImage(color.RGBA{B: 220, A: 255}),
+		},
+		paths: map[string]string{
+			"photo-original": "photo-original.jpg",
+			"photo-variant":  "photo-variant.jpg",
+			"video-original": "video-original.mp4",
+			"video-query":    "video-query.mp4",
+		},
+	}
+
+	sourceService, closeSourceMatchers := newFunctionalService(t, ctx, db, media, &fakeActions{})
+	photoBan := domain.Content{
+		FileID:       "photo-original",
+		FileUniqueID: "photo-original-unique",
+		Type:         domain.MediaPhoto,
+	}
+	videoBan := domain.Content{
+		FileID:       "video-original",
+		FileUniqueID: "video-original-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  2,
+		SizeBytes:    8,
+	}
+	handleBanCommand(t, ctx, sourceService, 100, 10, 20, photoBan)
+	handleBanCommand(t, ctx, sourceService, 100, 30, 40, videoBan)
+	closeSourceMatchers()
+
+	replicaBlocker, replicaAppliers, closeReplicaMatchers := newFunctionalBlocker(t, ctx, db, media)
+	defer closeReplicaMatchers()
+
+	reader, err := outboxpostgres.NewEventReader(db.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoints, err := indexcheckpointpostgres.NewStore(db.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
+	synchronizer, err := indexsync.New(indexsync.Config{
+		ConsumerID:  "functional-bootstrap-replica",
+		BatchSize:   10,
+		Reader:      reader,
+		Checkpoints: checkpoints,
+		Appliers:    replicaAppliers,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := synchronizer.CatchUpAllIndexes(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	assertContentBlocked(t, ctx, replicaBlocker, 100, domain.Content{
+		FileID:       "exact-query",
+		FileUniqueID: "photo-original-unique",
+		Type:         domain.MediaPhoto,
+	})
+	assertContentBlocked(t, ctx, replicaBlocker, 100, domain.Content{
+		FileID:       "photo-variant",
+		FileUniqueID: "photo-variant-unique",
+		Type:         domain.MediaPhoto,
+	})
+	assertContentBlocked(t, ctx, replicaBlocker, 100, domain.Content{
+		FileID:       "video-query",
+		FileUniqueID: "video-query-unique",
+		Type:         domain.MediaAnimation,
+		DurationSec:  2,
+		SizeBytes:    8,
+	})
+}
+
 func newFunctionalService(
 	t *testing.T,
 	ctx context.Context,
@@ -479,6 +560,18 @@ func newFunctionalBlocker(
 	}
 
 	return blocker, appliers, closeMatchers
+}
+
+func assertContentBlocked(t *testing.T, ctx context.Context, blocker ports.ContentBlocker, chatID int64, content domain.Content) {
+	t.Helper()
+
+	blocked, err := blocker.IsBlocked(ctx, chatID, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !blocked {
+		t.Fatalf("ожидалась блокировка контента: %#v", content)
+	}
 }
 
 func handleBanCommand(
