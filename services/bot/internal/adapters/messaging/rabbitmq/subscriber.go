@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
+	"github.com/ThreeDotsLabs/watermill"
+	watermillamqp "github.com/ThreeDotsLabs/watermill-amqp/v3/pkg/amqp"
+	"github.com/ThreeDotsLabs/watermill/message"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -49,43 +52,19 @@ func NewIndexSubscriber(cfg IndexSubscriberConfig, synchronizer IndexSynchronize
 func (s *indexSubscriber) Run(ctx context.Context) error {
 	const methodCtx = "rabbitmq/IndexSubscriber.Run"
 
-	queueName, err := s.cfg.QueueName()
+	watermillConfig, err := s.watermillConfig()
 	if err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
-
-	conn, err := amqp.Dial(s.cfg.URL)
-	if err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	ch, err := conn.Channel()
+	subscriber, err := watermillamqp.NewSubscriber(watermillConfig, watermill.NopLogger{})
 	if err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
 	defer func() {
-		_ = ch.Close()
+		_ = subscriber.Close()
 	}()
 
-	if err := ch.ExchangeDeclare(s.cfg.Exchange, s.cfg.ExchangeType, true, false, false, false, nil); err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	if _, err := ch.QueueDeclare(queueName, true, false, false, false, amqp.Table{"x-queue-type": "quorum"}); err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-	for _, routingKey := range s.cfg.RoutingKeys {
-		if err := ch.QueueBind(queueName, routingKey, s.cfg.Exchange, false, nil); err != nil {
-			return apperrors.Wrap(methodCtx, err)
-		}
-	}
-	if err := ch.Qos(s.cfg.Prefetch, 0, false); err != nil {
-		return apperrors.Wrap(methodCtx, err)
-	}
-
-	deliveries, err := ch.Consume(queueName, "", false, false, false, false, nil)
+	messages, err := s.subscribeRoutingKeys(ctx, subscriber)
 	if err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
@@ -101,17 +80,75 @@ func (s *indexSubscriber) Run(ctx context.Context) error {
 			if err := s.synchronizer.CatchUpAllIndexes(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				log.Printf("Ошибка periodic catch-up индексов: %v", err)
 			}
-		case delivery, ok := <-deliveries:
+		case msg, ok := <-messages:
 			if !ok {
 				return nil
 			}
 			if err := s.synchronizer.CatchUpAllIndexes(ctx); err != nil {
-				_ = delivery.Nack(false, true)
+				msg.Nack()
 				continue
 			}
-			_ = delivery.Ack(false)
+			msg.Ack()
 		}
 	}
+}
+
+func (s *indexSubscriber) subscribeRoutingKeys(ctx context.Context, subscriber *watermillamqp.Subscriber) (<-chan *message.Message, error) {
+	const methodCtx = "rabbitmq/IndexSubscriber.subscribeRoutingKeys"
+
+	for _, routingKey := range s.cfg.RoutingKeys[1:] {
+		if err := subscriber.SubscribeInitialize(routingKey); err != nil {
+			return nil, apperrors.Wrap(methodCtx, err)
+		}
+	}
+	messages, err := subscriber.Subscribe(ctx, s.cfg.RoutingKeys[0])
+	return messages, apperrors.Wrap(methodCtx, err)
+}
+
+func (s *indexSubscriber) watermillConfig() (watermillamqp.Config, error) {
+	const methodCtx = "rabbitmq/IndexSubscriber.watermillConfig"
+
+	queueName, err := s.cfg.QueueName()
+	if err != nil {
+		return watermillamqp.Config{}, apperrors.Wrap(methodCtx, err)
+	}
+
+	return watermillamqp.Config{
+		Connection: watermillamqp.ConnectionConfig{
+			AmqpURI: s.cfg.URL,
+			Reconnect: &watermillamqp.ReconnectConfig{
+				BackoffInitialInterval:     s.cfg.ReconnectDelay,
+				BackoffRandomizationFactor: 0.2,
+				BackoffMultiplier:          1.5,
+				BackoffMaxInterval:         s.cfg.ReconnectDelay * 6,
+			},
+		},
+		Marshaler: watermillamqp.DefaultMarshaler{},
+		Exchange: watermillamqp.ExchangeConfig{
+			GenerateName: watermillamqp.GenerateExchangeNameConstant(s.cfg.Exchange),
+			Type:         s.cfg.ExchangeType,
+			Durable:      true,
+		},
+		Queue: watermillamqp.QueueConfig{
+			GenerateName: watermillamqp.GenerateQueueNameConstant(queueName),
+			Durable:      true,
+			Exclusive:    false,
+			AutoDelete:   false,
+			Arguments:    amqp.Table{"x-queue-type": "quorum"},
+		},
+		QueueBind: watermillamqp.QueueBindConfig{
+			GenerateRoutingKey: func(topic string) string {
+				return topic
+			},
+		},
+		Consume: watermillamqp.ConsumeConfig{
+			NoRequeueOnNack: false,
+			Qos: watermillamqp.QosConfig{
+				PrefetchCount: s.cfg.Prefetch,
+			},
+		},
+		TopologyBuilder: &watermillamqp.DefaultTopologyBuilder{},
+	}, nil
 }
 
 func (c IndexSubscriberConfig) Validate() error {

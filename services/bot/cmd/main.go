@@ -222,8 +222,35 @@ func main() {
 		logging.Panic(methodCtx, err)
 	}
 
+	replicaID := cfg.Consumers.IndexEvents.ReplicaID
+	if cfg.Consumers.IndexEvents.Enabled && replicaID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		replicaID = hostname
+	}
+
+	var checkpointStore ports.IndexCheckpointStore
+	appliers := make([]ports.IndexEventApplier, 0, len(matchers))
+	if cfg.Consumers.IndexEvents.Enabled {
+		for _, matcher := range matchers {
+			applier, ok := matcher.(ports.IndexEventApplier)
+			if ok {
+				appliers = append(appliers, applier)
+			}
+		}
+		if len(appliers) == 0 {
+			logging.Panic(methodCtx, apperrors.New(methodCtx, "нет index applier-ов для index_events consumer-а"))
+		}
+		checkpointStore, err = indexcheckpointpostgres.NewStore(dbPool.Raw())
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+	}
+
 	if cfg.Health.Enabled {
-		healthServer, err := startHealthServer(ctx, cfg.Health.Address(), dbPool.Ping)
+		healthServer, err := startHealthServer(ctx, cfg.Health.Address(), readinessProbe(dbPool.Ping, checkpointStore, replicaID, appliers))
 		if err != nil {
 			logging.Panic(methodCtx, err)
 		}
@@ -296,31 +323,9 @@ func main() {
 	}
 
 	if cfg.Consumers.IndexEvents.Enabled {
-		checkpointStore, err := indexcheckpointpostgres.NewStore(dbPool.Raw())
-		if err != nil {
-			logging.Panic(methodCtx, err)
-		}
 		eventReader, err := outboxpostgres.NewEventReader(dbPool.Raw())
 		if err != nil {
 			logging.Panic(methodCtx, err)
-		}
-		appliers := make([]ports.IndexEventApplier, 0, len(matchers))
-		for _, matcher := range matchers {
-			applier, ok := matcher.(ports.IndexEventApplier)
-			if ok {
-				appliers = append(appliers, applier)
-			}
-		}
-		if len(appliers) == 0 {
-			logging.Panic(methodCtx, apperrors.New(methodCtx, "нет index applier-ов для index_events consumer-а"))
-		}
-		replicaID := cfg.Consumers.IndexEvents.ReplicaID
-		if replicaID == "" {
-			hostname, err := os.Hostname()
-			if err != nil {
-				logging.Panic(methodCtx, err)
-			}
-			replicaID = hostname
 		}
 		synchronizer, err := indexsync.New(indexsync.Config{
 			ConsumerID:  replicaID,
@@ -397,6 +402,27 @@ func main() {
 }
 
 type readinessCheck func(context.Context) error
+
+func readinessProbe(dbPing readinessCheck, checkpoints ports.IndexCheckpointStore, consumerID string, appliers []ports.IndexEventApplier) readinessCheck {
+	return func(ctx context.Context) error {
+		const methodCtx = "cmd/readinessProbe"
+
+		if dbPing != nil {
+			if err := dbPing(ctx); err != nil {
+				return apperrors.Wrap(methodCtx, err)
+			}
+		}
+		if checkpoints == nil {
+			return nil
+		}
+
+		indexNames := make([]string, 0, len(appliers))
+		for _, applier := range appliers {
+			indexNames = append(indexNames, applier.IndexName())
+		}
+		return apperrors.Wrap(methodCtx, checkpoints.CheckFresh(ctx, consumerID, indexNames))
+	}
+}
 
 func startHealthServer(ctx context.Context, address string, readiness readinessCheck) (*http.Server, error) {
 	const methodCtx = "cmd/startHealthServer"

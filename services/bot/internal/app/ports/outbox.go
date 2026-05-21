@@ -68,6 +68,7 @@ type IndexCheckpointStore interface {
 	GetOrCreate(ctx context.Context, consumerID string, indexName string) (IndexCheckpoint, error)
 	Update(ctx context.Context, consumerID string, indexName string, transactionID string, offset int64) error
 	MarkStale(ctx context.Context, consumerID string, indexName string, reason string) error
+	CheckFresh(ctx context.Context, consumerID string, indexNames []string) error
 }
 
 type IndexEventApplier interface {

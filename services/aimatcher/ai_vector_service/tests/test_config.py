@@ -43,6 +43,22 @@ database:
 matching:
   ai_vector:
     index_path: "faiss.index"
+rabbitmq:
+  url: "amqp://user:pass@rabbitmq:5672/"
+  exchange: "test.events"
+  exchange_type: "topic"
+  reconnect_interval: 7s
+consumers:
+  index_events:
+    enabled: true
+    replica_id: "ai-replica-1"
+    queue_template: "bastyle.replica.%s.events"
+    routing_keys:
+      - "media.ban.#"
+      - "index.#"
+    prefetch: 4
+    catch_up_interval: 9s
+    catch_up_batch_size: 12
 """,
         encoding="utf-8",
     )
@@ -54,3 +70,13 @@ matching:
     assert settings.database.max_size == 12
     assert settings.database.connect_timeout == 6
     assert settings.index_path == "faiss.index"
+    assert settings.rabbitmq.url == "amqp://user:pass@rabbitmq:5672/"
+    assert settings.rabbitmq.exchange == "test.events"
+    assert settings.rabbitmq.exchange_type == "topic"
+    assert settings.rabbitmq.reconnect_interval == 7
+    assert settings.index_events.enabled is True
+    assert settings.index_events.replica_id == "ai-replica-1"
+    assert settings.index_events.routing_keys == ["media.ban.#", "index.#"]
+    assert settings.index_events.prefetch == 4
+    assert settings.index_events.catch_up_interval == 9
+    assert settings.index_events.catch_up_batch_size == 12

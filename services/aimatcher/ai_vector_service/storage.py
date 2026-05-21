@@ -212,6 +212,40 @@ ORDER BY b.id, f.frame_index
 
         return _rows_to_bans(rows)
 
+    def load_active_ban_by_uid(
+        self,
+        *,
+        ban_uid: str,
+        model_name: str,
+        model_revision: str,
+    ) -> VectorBan | None:
+        with self._pool.raw.connection() as conn:
+            conn.row_factory = dict_row
+            rows = conn.execute(
+                """
+SELECT b.id AS ban_id, b.chat_id, b.file_unique_id, b.media_type, b.model_name, b.model_revision,
+       b.vector_dim, b.frames_count, b.active, b.created_at,
+       f.id AS frame_id, f.frame_index, f.position_millis, f.vector_blob
+FROM ai_vector_ban b
+JOIN ai_vector_frame f ON f.ban_id = b.id
+WHERE b.ban_uid = %(ban_uid)s
+  AND b.active = TRUE
+  AND b.model_name = %(model_name)s
+  AND b.model_revision = %(model_revision)s
+ORDER BY b.id, f.frame_index
+""",
+                {
+                    "ban_uid": ban_uid,
+                    "model_name": model_name,
+                    "model_revision": model_revision,
+                },
+            ).fetchall()
+
+        bans = _rows_to_bans(rows)
+        if not bans:
+            return None
+        return bans[0]
+
     def deactivate_ban(self, ban_id: int) -> bool:
         with self._pool.transaction() as conn:
             cursor = conn.execute(

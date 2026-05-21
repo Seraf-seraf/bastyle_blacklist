@@ -32,14 +32,16 @@ func (s *store) GetOrCreate(ctx context.Context, consumerID string, indexName st
 		return ports.IndexCheckpoint{}, apperrors.New(methodCtx, "PostgreSQL pool не настроен")
 	}
 
+	if _, err := s.pool.Exec(ctx, `
+INSERT INTO index_checkpoints (consumer_id, index_name)
+VALUES ($1, $2)
+ON CONFLICT (consumer_id, index_name) DO NOTHING
+`, consumerID, indexName); err != nil {
+		return ports.IndexCheckpoint{}, apperrors.Wrap(methodCtx, err)
+	}
+
 	var checkpoint ports.IndexCheckpoint
 	if err := s.pool.QueryRow(ctx, `
-WITH ensured AS (
-    INSERT INTO index_checkpoints (consumer_id, index_name)
-    VALUES ($1, $2)
-    ON CONFLICT (consumer_id, index_name) DO NOTHING
-    RETURNING consumer_id
-)
 SELECT consumer_id, index_name, last_applied_transaction_id::text, last_applied_offset, updated_at, stale, COALESCE(stale_reason, '')
 FROM index_checkpoints
 WHERE consumer_id = $1 AND index_name = $2
@@ -102,6 +104,29 @@ WHERE consumer_id = $1
 	return apperrors.Wrap(methodCtx, err)
 }
 
+func (s *store) CheckFresh(ctx context.Context, consumerID string, indexNames []string) error {
+	const methodCtx = "indexcheckpoint/postgres/Store.CheckFresh"
+
+	if consumerID == "" {
+		return apperrors.New(methodCtx, "consumer_id обязателен")
+	}
+	if len(indexNames) == 0 {
+		return nil
+	}
+	if s.pool == nil {
+		return apperrors.New(methodCtx, "PostgreSQL pool не настроен")
+	}
+
+	var staleCount int
+	if err := s.pool.QueryRow(ctx, checkFreshSQL(len(indexNames)), consumerID, indexNames).Scan(&staleCount); err != nil {
+		return apperrors.Wrap(methodCtx, err)
+	}
+	if staleCount > 0 {
+		return apperrors.New(methodCtx, "найдены stale index checkpoints")
+	}
+	return nil
+}
+
 func updateCheckpointSQL() string {
 	return `
 UPDATE index_checkpoints
@@ -116,6 +141,16 @@ WHERE consumer_id = $1
         last_applied_transaction_id < $3::xid8
         OR (last_applied_transaction_id = $3::xid8 AND last_applied_offset <= $4)
       )
+`
+}
+
+func checkFreshSQL(_ int) string {
+	return `
+SELECT count(*)
+FROM index_checkpoints
+WHERE consumer_id = $1
+  AND index_name = ANY($2)
+  AND stale = TRUE
 `
 }
 

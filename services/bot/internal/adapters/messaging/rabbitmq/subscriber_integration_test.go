@@ -57,7 +57,10 @@ func TestIndexSubscriberConsumesSignalAndRunsCatchUp(t *testing.T) {
 
 	if err := ch.PublishWithContext(ctx, cfg.Exchange, "media.ban.created.v1", false, false, amqp.Publishing{
 		ContentType: "application/json",
-		Body:        []byte(`{"signal":true}`),
+		Headers: amqp.Table{
+			"_watermill_message_uuid": "integration-message",
+		},
+		Body: []byte(`{"signal":true}`),
 	}); err != nil {
 		t.Fatal(err)
 	}

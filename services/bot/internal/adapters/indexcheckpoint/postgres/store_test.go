@@ -31,6 +31,16 @@ func TestStoreRejectsInvalidArgumentsBeforeDatabaseQuery(t *testing.T) {
 	if err := store.MarkStale(ctx, "replica-1", "exact", ""); err == nil {
 		t.Fatal("ожидалась ошибка для пустой причины stale")
 	}
+	if err := store.CheckFresh(ctx, "replica-1", []string{"exact"}); err == nil {
+		t.Fatal("ожидалась ошибка для store без PostgreSQL pool")
+	}
+}
+
+func TestStoreCheckFreshSQLDetectsStaleIndexes(t *testing.T) {
+	query := checkFreshSQL(2)
+	if !containsAll(query, "FROM index_checkpoints", "stale = TRUE", "consumer_id = $1", "index_name = ANY($2)") {
+		t.Fatalf("readiness SQL должен проверять stale checkpoints, SQL: %s", query)
+	}
 }
 
 func containsAll(value string, parts ...string) bool {

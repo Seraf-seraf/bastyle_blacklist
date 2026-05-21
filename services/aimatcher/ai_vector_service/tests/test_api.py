@@ -63,6 +63,17 @@ class FakeDatabase:
             raise self.err
 
 
+class FakeIndexHealth:
+    def __init__(self, err=None):
+        self.err = err
+        self.checks = 0
+
+    def check(self):
+        self.checks += 1
+        if self.err is not None:
+            raise self.err
+
+
 def png_bytes() -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (8, 8), "white").save(buffer, format="PNG")
@@ -119,6 +130,18 @@ def test_health_returns_unavailable_when_database_ping_fails():
 
     assert response.status_code == 503
     assert response.json()["detail"] == "PostgreSQL недоступен"
+
+
+def test_health_returns_unavailable_when_index_checkpoint_is_stale():
+    database = FakeDatabase()
+    index_health = FakeIndexHealth(RuntimeError("stale"))
+    client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel(), database=database, index_health=index_health)))
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Индексы требуют пересинхронизации"
+    assert index_health.checks == 1
 
 
 def test_embed_rejects_invalid_image():
@@ -299,6 +322,44 @@ def test_vector_index_service_keeps_existing_ban_active_when_duplicate_index_upd
         store.close()
 
 
+def test_vector_index_service_applies_existing_ban_by_uid(tmp_path):
+    class FakeIndex:
+        def __init__(self):
+            self.ban_ids = []
+
+        def add_ban(self, ban):
+            self.ban_ids.append(ban.id)
+
+        def save(self, **kwargs):
+            return None
+
+    store = MemoryVectorStore()
+    ban_uid = "ban-uid-1"
+    ban_id = store.insert_ban(
+        chat_id=10,
+        file_unique_id="file-unique-id",
+        media_type="photo",
+        model_name="fake-model",
+        model_revision="fake-revision",
+        vector_dim=3,
+        frames=[MemoryVectorFrame(frame_index=0, position_millis=0, vector=[1.0, 0.0, 0.0])],
+        ban_uid=ban_uid,
+    )
+    service = VectorIndexService(
+        store=store,
+        model_name="fake-model",
+        model_revision="fake-revision",
+        index_path=str(tmp_path / "faiss.index"),
+    )
+    service._index = FakeIndex()
+    service._dimension = 3
+
+    status = service.apply_existing_ban(ban_uid=ban_uid)
+
+    assert status == "applied"
+    assert service._index.ban_ids == [ban_id]
+
+
 def test_search_returns_hits():
     vector_service = FakeVectorService()
     client = TestClient(
@@ -343,11 +404,12 @@ class MemoryVectorStore:
         self.next_ban_id = 0
         self.next_frame_id = 0
         self.return_existing = False
+        self.ban_uids = {}
 
     def close(self):
         return None
 
-    def insert_ban(self, *, chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames):
+    def insert_ban(self, *, chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames, ban_uid=None):
         return self.insert_ban_result(
             chat_id=chat_id,
             file_unique_id=file_unique_id,
@@ -356,9 +418,10 @@ class MemoryVectorStore:
             model_revision=model_revision,
             vector_dim=vector_dim,
             frames=frames,
+            ban_uid=ban_uid,
         ).ban_id
 
-    def insert_ban_result(self, *, chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames):
+    def insert_ban_result(self, *, chat_id, file_unique_id, media_type, model_name, model_revision, vector_dim, frames, ban_uid=None):
         if self.return_existing:
             for ban in self.bans:
                 if (
@@ -399,6 +462,7 @@ class MemoryVectorStore:
                 frames=stored_frames,
             )
         )
+        self.ban_uids[self.next_ban_id] = ban_uid
         return InsertBanResult(ban_id=self.next_ban_id, created=True)
 
     def load_active_bans(self, *, chat_id=None, model_name=None, model_revision=None, vector_dim=None):
@@ -412,6 +476,12 @@ class MemoryVectorStore:
         if vector_dim is not None:
             bans = [ban for ban in bans if ban.vector_dim == vector_dim]
         return bans
+
+    def load_active_ban_by_uid(self, *, ban_uid, model_name, model_revision):
+        for ban in self.load_active_bans(model_name=model_name, model_revision=model_revision):
+            if self.ban_uids.get(ban.id) == ban_uid:
+                return ban
+        return None
 
     def deactivate_ban(self, ban_id):
         from dataclasses import replace

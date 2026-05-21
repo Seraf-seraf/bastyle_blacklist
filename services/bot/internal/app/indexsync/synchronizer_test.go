@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/google/uuid"
@@ -92,6 +94,35 @@ func TestSynchronizerMarksIndexStaleOnApplyError(t *testing.T) {
 	}
 }
 
+func TestSynchronizerCatchesUpIndexesInParallel(t *testing.T) {
+	ctx := context.Background()
+	reader := &fakeEventReader{events: []ports.OutboxEvent{
+		newOutboxEvent("1", 1, "media.ban.created.v1"),
+	}}
+	checkpoints := newFakeCheckpointStore()
+	first := &fakeApplier{indexName: "first", supported: "media.ban.created.v1", delay: 40 * time.Millisecond}
+	second := &fakeApplier{indexName: "second", supported: "media.ban.created.v1", delay: 40 * time.Millisecond}
+
+	synchronizer, err := New(Config{
+		ConsumerID:  "replica-1",
+		BatchSize:   10,
+		Reader:      reader,
+		Checkpoints: checkpoints,
+		Appliers:    []ports.IndexEventApplier{first, second},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	startedAt := time.Now()
+	if err := synchronizer.CatchUpAllIndexes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 75*time.Millisecond {
+		t.Fatalf("индексы синхронизировались последовательно, elapsed=%s", elapsed)
+	}
+}
+
 func TestSynchronizerRejectsInvalidConfig(t *testing.T) {
 	_, err := New(Config{})
 	if err == nil {
@@ -123,6 +154,7 @@ type checkpointKey struct {
 }
 
 type fakeCheckpointStore struct {
+	mu    sync.Mutex
 	items map[checkpointKey]ports.IndexCheckpoint
 }
 
@@ -131,6 +163,9 @@ func newFakeCheckpointStore() *fakeCheckpointStore {
 }
 
 func (s *fakeCheckpointStore) GetOrCreate(_ context.Context, consumerID string, indexName string) (ports.IndexCheckpoint, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	key := checkpointKey{consumerID: consumerID, indexName: indexName}
 	checkpoint, ok := s.items[key]
 	if !ok {
@@ -141,6 +176,9 @@ func (s *fakeCheckpointStore) GetOrCreate(_ context.Context, consumerID string, 
 }
 
 func (s *fakeCheckpointStore) Update(_ context.Context, consumerID string, indexName string, transactionID string, offset int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	key := checkpointKey{consumerID: consumerID, indexName: indexName}
 	checkpoint := s.items[key]
 	if eventPositionAfter(transactionID, offset, checkpoint.LastAppliedTransactionID, checkpoint.LastAppliedOffset) {
@@ -154,6 +192,9 @@ func (s *fakeCheckpointStore) Update(_ context.Context, consumerID string, index
 }
 
 func (s *fakeCheckpointStore) MarkStale(_ context.Context, consumerID string, indexName string, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	key := checkpointKey{consumerID: consumerID, indexName: indexName}
 	checkpoint := s.items[key]
 	checkpoint.ConsumerID = consumerID
@@ -164,11 +205,16 @@ func (s *fakeCheckpointStore) MarkStale(_ context.Context, consumerID string, in
 	return nil
 }
 
+func (s *fakeCheckpointStore) CheckFresh(context.Context, string, []string) error {
+	return nil
+}
+
 type fakeApplier struct {
 	indexName      string
 	supported      string
 	failOnPosition string
 	err            error
+	delay          time.Duration
 	applied        []string
 }
 
@@ -181,6 +227,9 @@ func (a *fakeApplier) Supports(eventType string) bool {
 }
 
 func (a *fakeApplier) ApplyEvent(_ context.Context, event ports.OutboxEvent) error {
+	if a.delay > 0 {
+		time.Sleep(a.delay)
+	}
 	position := fmt.Sprintf("%s/%d", event.TransactionID, event.Offset)
 	if position == a.failOnPosition {
 		return a.err

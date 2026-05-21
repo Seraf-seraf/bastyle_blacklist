@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
@@ -90,12 +91,26 @@ func New(cfg Config) (*synchronizer, error) {
 func (s *synchronizer) CatchUpAllIndexes(ctx context.Context) error {
 	const methodCtx = "indexsync/Synchronizer.CatchUpAllIndexes"
 
+	errs := make(chan error, len(s.indexes))
+	var wg sync.WaitGroup
 	for _, indexName := range s.indexes {
-		if err := s.CatchUpIndex(ctx, indexName); err != nil {
-			return apperrors.Wrap(methodCtx, err)
-		}
+		indexName := indexName
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.CatchUpIndex(ctx, indexName); err != nil {
+				errs <- apperrors.Wrap(methodCtx, err)
+			}
+		}()
 	}
-	return nil
+	wg.Wait()
+	close(errs)
+
+	var joined error
+	for err := range errs {
+		joined = errors.Join(joined, err)
+	}
+	return joined
 }
 
 func (s *synchronizer) CatchUpIndex(ctx context.Context, indexName string) error {

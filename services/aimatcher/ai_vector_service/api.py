@@ -55,6 +55,7 @@ class Dependencies:
     model: ImageEmbeddingModel
     vectors: "VectorIndexService | None" = None
     database: object | None = None
+    index_health: object | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +169,33 @@ class VectorIndexService:
                 for frame in frames
             ]
 
+    def apply_existing_ban(self, *, ban_uid: str) -> str:
+        if not ban_uid:
+            raise ValueError("ban_uid обязателен")
+
+        with self._lock:
+            load_by_uid = getattr(self._store, "load_active_ban_by_uid", None)
+            if load_by_uid is None:
+                raise RuntimeError("PostgreSQL-хранилище не умеет загружать AI-vector ban по UID")
+
+            ban = load_by_uid(
+                ban_uid=ban_uid,
+                model_name=self._model_name,
+                model_revision=self._model_revision,
+            )
+            if ban is None:
+                return "skipped"
+
+            index = self._index_for_dimension(ban.vector_dim)
+            index.add_ban(ban)
+            index.save(
+                store=self._store,
+                path=self._index_path,
+                model_name=self._model_name,
+                model_revision=self._model_revision,
+            )
+            return "applied"
+
     def _index_for_dimension(self, dimension: int) -> FaissHNSWVectorIndex:
         if self._index is not None:
             if self._dimension != dimension:
@@ -211,6 +239,11 @@ def create_app(
             dependencies.database.ping()
         except Exception as err:
             raise HTTPException(status_code=503, detail="PostgreSQL недоступен") from err
+        if dependencies.index_health is not None:
+            try:
+                dependencies.index_health.check()
+            except Exception as err:
+                raise HTTPException(status_code=503, detail="Индексы требуют пересинхронизации") from err
 
         return HealthResponse(status="ok", model_name=dependencies.model.model_name)
 

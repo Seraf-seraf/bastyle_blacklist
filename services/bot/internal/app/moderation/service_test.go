@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/database/postgres"
+	indexcheckpointpostgres "github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/indexcheckpoint/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/orchestrator"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/videolike"
 	outboxpostgres "github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/outbox/postgres"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/indexsync"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/config"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
@@ -324,6 +326,78 @@ func TestServiceFunctionalStoresBanArtifactsInPostgres(t *testing.T) {
 	}
 }
 
+func TestServiceFunctionalCatchUpAppliesBanEventToRuntimeIndex(t *testing.T) {
+	ctx := context.Background()
+	db := newFunctionalPostgresPool(t, ctx)
+	applyFunctionalPostgresMigrations(t, ctx, db.Raw())
+
+	media := functionalMedia{
+		images: map[string]image.Image{
+			"photo-original": e2EPatternImage(color.RGBA{R: 220, G: 40, B: 40, A: 255}),
+			"photo-variant":  e2EVariantImage(color.RGBA{R: 220, G: 40, B: 40, A: 255}),
+		},
+		paths: map[string]string{
+			"photo-original": "photo-original.jpg",
+			"photo-variant":  "photo-variant.jpg",
+		},
+	}
+
+	sourceService, closeSourceMatchers := newFunctionalService(t, ctx, db, media, &fakeActions{})
+	defer closeSourceMatchers()
+	replicaBlocker, replicaAppliers, closeReplicaMatchers := newFunctionalBlocker(t, ctx, db, media)
+	defer closeReplicaMatchers()
+
+	photoBan := domain.Content{
+		FileID:       "photo-original",
+		FileUniqueID: "photo-original-unique",
+		Type:         domain.MediaPhoto,
+	}
+	handleBanCommand(t, ctx, sourceService, 100, 10, 20, photoBan)
+
+	query := domain.Content{
+		FileID:       "photo-variant",
+		FileUniqueID: "photo-variant-unique",
+		Type:         domain.MediaPhoto,
+	}
+	blockedBefore, err := replicaBlocker.IsBlocked(ctx, 100, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blockedBefore {
+		t.Fatal("реплика не должна блокировать фото до catch-up")
+	}
+
+	reader, err := outboxpostgres.NewEventReader(db.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoints, err := indexcheckpointpostgres.NewStore(db.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
+	synchronizer, err := indexsync.New(indexsync.Config{
+		ConsumerID:  "functional-replica",
+		BatchSize:   10,
+		Reader:      reader,
+		Checkpoints: checkpoints,
+		Appliers:    replicaAppliers,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := synchronizer.CatchUpAllIndexes(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	blockedAfter, err := replicaBlocker.IsBlocked(ctx, 100, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !blockedAfter {
+		t.Fatal("реплика должна блокировать фото после catch-up")
+	}
+}
+
 func newFunctionalService(
 	t *testing.T,
 	ctx context.Context,
@@ -331,6 +405,23 @@ func newFunctionalService(
 	media functionalMedia,
 	actions *fakeActions,
 ) (*service, func()) {
+	t.Helper()
+
+	blocker, _, closeMatchers := newFunctionalBlocker(t, ctx, db, media)
+	service, err := NewService(blocker, fakeAdmins{admin: true}, actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return service, closeMatchers
+}
+
+func newFunctionalBlocker(
+	t *testing.T,
+	ctx context.Context,
+	db *postgres.Pool,
+	media functionalMedia,
+) (ports.ContentBlocker, []ports.IndexEventApplier, func()) {
 	t.Helper()
 
 	exactMatcher, err := exact.NewPostgresMatcher(ctx, db.Raw(), 4)
@@ -364,16 +455,13 @@ func newFunctionalService(
 	if err != nil {
 		t.Fatal(err)
 	}
+	appliers := []ports.IndexEventApplier{exactMatcher, imageHashMatcher, videoLikeMatcher}
 
 	blocker, err := orchestrator.NewBlockOrchestrator(
 		db,
 		outboxStore,
 		[]ports.ContentBlockMatcher{exactMatcher, imageHashMatcher, videoLikeMatcher}...,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := NewService(blocker, fakeAdmins{admin: true}, actions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +478,7 @@ func newFunctionalService(
 		}
 	}
 
-	return service, closeMatchers
+	return blocker, appliers, closeMatchers
 }
 
 func handleBanCommand(

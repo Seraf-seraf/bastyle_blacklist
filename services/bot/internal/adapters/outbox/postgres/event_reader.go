@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
@@ -53,53 +54,104 @@ func (r *eventReader) LoadAfter(ctx context.Context, transactionID string, offse
 		var eventUIDText string
 		var payload []byte
 		var metadataRaw []byte
-		var createdAt ports.OutboxEvent
+		var createdAt time.Time
 		if err := rows.Scan(
 			&transactionID,
 			&offset,
 			&eventUIDText,
 			&payload,
 			&metadataRaw,
-			&createdAt.CreatedAt,
+			&createdAt,
 		); err != nil {
 			return nil, apperrors.Wrap(methodCtx, err)
 		}
-		metadata := struct {
-			EventUID      string `json:"event_uid"`
-			EventType     string `json:"event_type"`
-			AggregateType string `json:"aggregate_type"`
-			AggregateUID  string `json:"aggregate_uid"`
-		}{}
-		if len(metadataRaw) > 0 {
-			if err := json.Unmarshal(metadataRaw, &metadata); err != nil {
-				return nil, apperrors.Wrap(methodCtx, err)
-			}
-		}
-		if metadata.EventUID == "" {
-			metadata.EventUID = eventUIDText
-		}
-		eventUID, err := uuid.Parse(metadata.EventUID)
+
+		event, err := eventFromRow(transactionID, offset, eventUIDText, payload, metadataRaw, createdAt)
 		if err != nil {
 			return nil, apperrors.Wrap(methodCtx, err)
-		}
-		aggregateUID, err := uuid.Parse(metadata.AggregateUID)
-		if err != nil {
-			return nil, apperrors.Wrap(methodCtx, err)
-		}
-		event := ports.OutboxEvent{
-			TransactionID: transactionID,
-			Offset:        offset,
-			EventUID:      eventUID,
-			EventType:     metadata.EventType,
-			AggregateType: metadata.AggregateType,
-			AggregateUID:  aggregateUID,
-			Payload:       payload,
-			CreatedAt:     createdAt.CreatedAt,
 		}
 		events = append(events, event)
 	}
 
 	return events, apperrors.Wrap(methodCtx, rows.Err())
+}
+
+type eventMetadata struct {
+	EventUID      string `json:"event_uid"`
+	EventType     string `json:"event_type"`
+	AggregateType string `json:"aggregate_type"`
+	AggregateUID  string `json:"aggregate_uid"`
+}
+
+type forwarderEnvelope struct {
+	DestinationTopic string            `json:"destination_topic"`
+	UUID             string            `json:"uuid"`
+	Payload          []byte            `json:"payload"`
+	Metadata         map[string]string `json:"metadata"`
+}
+
+func eventFromRow(
+	transactionID string,
+	offset int64,
+	eventUIDText string,
+	payload []byte,
+	metadataRaw []byte,
+	createdAt time.Time,
+) (ports.OutboxEvent, error) {
+	var metadata eventMetadata
+	if len(metadataRaw) > 0 {
+		if err := json.Unmarshal(metadataRaw, &metadata); err != nil {
+			return ports.OutboxEvent{}, err
+		}
+	}
+
+	var envelope forwarderEnvelope
+	if len(payload) > 0 {
+		if err := json.Unmarshal(payload, &envelope); err == nil && envelope.DestinationTopic != "" {
+			payload = envelope.Payload
+			if eventUIDText == "" {
+				eventUIDText = envelope.UUID
+			}
+			if metadata.EventUID == "" {
+				metadata.EventUID = envelope.Metadata["event_uid"]
+			}
+			if metadata.EventType == "" {
+				metadata.EventType = envelope.Metadata["event_type"]
+			}
+			if metadata.EventType == "" {
+				metadata.EventType = envelope.DestinationTopic
+			}
+			if metadata.AggregateType == "" {
+				metadata.AggregateType = envelope.Metadata["aggregate_type"]
+			}
+			if metadata.AggregateUID == "" {
+				metadata.AggregateUID = envelope.Metadata["aggregate_uid"]
+			}
+		}
+	}
+	if metadata.EventUID == "" {
+		metadata.EventUID = eventUIDText
+	}
+
+	eventUID, err := uuid.Parse(metadata.EventUID)
+	if err != nil {
+		return ports.OutboxEvent{}, err
+	}
+	aggregateUID, err := uuid.Parse(metadata.AggregateUID)
+	if err != nil {
+		return ports.OutboxEvent{}, err
+	}
+
+	return ports.OutboxEvent{
+		TransactionID: transactionID,
+		Offset:        offset,
+		EventUID:      eventUID,
+		EventType:     metadata.EventType,
+		AggregateType: metadata.AggregateType,
+		AggregateUID:  aggregateUID,
+		Payload:       payload,
+		CreatedAt:     createdAt,
+	}, nil
 }
 
 func loadAfterSQL() string {
