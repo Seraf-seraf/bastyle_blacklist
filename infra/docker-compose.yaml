@@ -1,7 +1,7 @@
 services:
   bastyle-blacklist:
     build:
-      context: ..
+      context: .
       dockerfile: infra/docker/Dockerfile.bot
     image: bastyle-blacklist:local
     restart: unless-stopped
@@ -24,7 +24,7 @@ services:
 
   bastyle-aimatcher:
     build:
-      context: ..
+      context: .
       dockerfile: infra/docker/Dockerfile.aimatcher
     image: bastyle-aimatcher:local
     restart: unless-stopped
