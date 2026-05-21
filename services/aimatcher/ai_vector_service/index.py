@@ -52,6 +52,7 @@ class FaissHNSWVectorIndex:
         self._validate_config(self._config)
         self._index = index or self._new_index()
         self._refs = refs or []
+        self._ref_keys = _refs_to_keys(self._refs)
         self._ids_by_chat = _refs_to_ids_by_chat(self._refs)
         self._lock = threading.RLock()
 
@@ -59,6 +60,8 @@ class FaissHNSWVectorIndex:
             raise ValueError("размерность индекса faiss не совпадает")
         if self._index.ntotal != len(self._refs):
             raise ValueError("количество записей индекса faiss и ссылок не совпадает")
+        if len(self._ref_keys) != len(self._refs):
+            raise ValueError("ссылки индекса faiss содержат дубли")
 
     @property
     def dimension(self) -> int:
@@ -154,38 +157,52 @@ class FaissHNSWVectorIndex:
 
         return cls(dimension=dimension, config=config, index=index, refs=refs)
 
-    def add_ban(self, ban: VectorBan) -> None:
-        self.add_bans([ban])
+    def add_ban(self, ban: VectorBan) -> int:
+        return self.add_bans([ban])
 
     def validate_vectors(self, vectors: list[list[float]]) -> None:
         _normalize_vectors(vectors, self._dimension)
 
-    def add_bans(self, bans: list[VectorBan]) -> None:
-        vectors: list[list[float]] = []
-        refs: list[IndexedVectorRef] = []
+    def add_bans(self, bans: list[VectorBan]) -> int:
+        candidates: list[tuple[list[float], IndexedVectorRef]] = []
         for ban in bans:
             if ban.vector_dim != self._dimension:
                 raise ValueError("размерность вектора бана не совпадает")
             for frame in ban.frames:
-                vectors.append(frame.vector)
-                refs.append(
-                    IndexedVectorRef(
-                        ban_id=ban.id,
-                        chat_id=ban.chat_id,
-                        frame_index=frame.frame_index,
+                candidates.append(
+                    (
+                        frame.vector,
+                        IndexedVectorRef(
+                            ban_id=ban.id,
+                            chat_id=ban.chat_id,
+                            frame_index=frame.frame_index,
+                        ),
                     )
                 )
 
-        if not vectors:
-            return
-
-        matrix = _normalize_vectors(vectors, self._dimension)
         with self._lock:
+            vectors: list[list[float]] = []
+            refs: list[IndexedVectorRef] = []
+            pending_keys: set[tuple[int, int]] = set()
+            for vector, ref in candidates:
+                key = _ref_key(ref)
+                if key in self._ref_keys or key in pending_keys:
+                    continue
+                vectors.append(vector)
+                refs.append(ref)
+                pending_keys.add(key)
+
+            if not vectors:
+                return 0
+
+            matrix = _normalize_vectors(vectors, self._dimension)
             start_id = int(self._index.ntotal)
             self._index.add(matrix)
             self._refs.extend(refs)
+            self._ref_keys.update(pending_keys)
             for offset, ref in enumerate(refs):
                 self._ids_by_chat.setdefault(ref.chat_id, []).append(start_id + offset)
+            return len(refs)
 
     def search(self, vector: list[float], top_k: int, chat_id: int | None = None) -> list[VectorSearchHit]:
         if top_k <= 0:
@@ -313,6 +330,14 @@ def _refs_to_ids_by_chat(refs: list[IndexedVectorRef]) -> dict[int, list[int]]:
     for index_id, ref in enumerate(refs):
         ids_by_chat.setdefault(ref.chat_id, []).append(index_id)
     return ids_by_chat
+
+
+def _refs_to_keys(refs: list[IndexedVectorRef]) -> set[tuple[int, int]]:
+    return {_ref_key(ref) for ref in refs}
+
+
+def _ref_key(ref: IndexedVectorRef) -> tuple[int, int]:
+    return (ref.ban_id, ref.frame_index)
 
 
 def _state_matches(

@@ -360,6 +360,34 @@ def test_vector_index_service_applies_existing_ban_by_uid(tmp_path):
     assert service._index.ban_ids == [ban_id]
 
 
+def test_vector_index_service_skips_repeated_existing_ban_event(tmp_path):
+    store = MemoryVectorStore()
+    ban_uid = "ban-uid-1"
+    store.insert_ban(
+        chat_id=10,
+        file_unique_id="file-unique-id",
+        media_type="photo",
+        model_name="fake-model",
+        model_revision="fake-revision",
+        vector_dim=3,
+        frames=[MemoryVectorFrame(frame_index=0, position_millis=0, vector=[1.0, 0.0, 0.0])],
+        ban_uid=ban_uid,
+    )
+    service = VectorIndexService(
+        store=store,
+        model_name="fake-model",
+        model_revision="fake-revision",
+        index_path=str(tmp_path / "faiss.index"),
+    )
+
+    first_status = service.apply_existing_ban(ban_uid=ban_uid)
+    second_status = service.apply_existing_ban(ban_uid=ban_uid)
+
+    assert first_status == "already_applied"
+    assert second_status == "already_applied"
+    assert service._index.vectors_count == 1
+
+
 def test_search_returns_hits():
     vector_service = FakeVectorService()
     client = TestClient(

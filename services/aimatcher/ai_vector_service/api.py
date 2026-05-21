@@ -187,7 +187,9 @@ class VectorIndexService:
                 return "skipped"
 
             index = self._index_for_dimension(ban.vector_dim)
-            index.add_ban(ban)
+            added_vectors = index.add_ban(ban)
+            if added_vectors == 0:
+                return "already_applied"
             index.save(
                 store=self._store,
                 path=self._index_path,

@@ -37,6 +37,30 @@ def test_faiss_hnsw_index_finds_added_ban(tmp_path: Path):
     assert hits[0].score > 0.99
 
 
+def test_faiss_hnsw_index_skips_duplicate_ban_frames_on_repeated_event(tmp_path: Path):
+    index = FaissHNSWVectorIndex(dimension=3, config=_test_config())
+    store = MemoryVectorStore()
+    ban = _insert_ban(
+        store,
+        file_unique_id="file-1",
+        vectors=[
+            VectorFrame(frame_index=0, position_millis=0, vector=[1.0, 0.0, 0.0]),
+            VectorFrame(frame_index=1, position_millis=100, vector=[0.0, 1.0, 0.0]),
+        ],
+    )
+
+    assert index.add_ban(ban) == 2
+    assert index.add_ban(ban) == 0
+
+    assert index.vectors_count == 2
+    index.save(
+        store=store,
+        path=tmp_path / "faiss-image.index",
+        model_name="test-model",
+        model_revision="test-revision",
+    )
+
+
 def test_faiss_hnsw_index_filters_added_bans_by_chat_id(tmp_path: Path):
     index = FaissHNSWVectorIndex(dimension=3, config=_test_config())
     store = MemoryVectorStore()
