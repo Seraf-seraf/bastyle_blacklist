@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestStartHealthServer(t *testing.T) {
@@ -113,4 +114,73 @@ func TestStartHealthServerChecksDependency(t *testing.T) {
 	if string(body) != `{"status":"ok"}` {
 		t.Fatalf("неожиданное тело ответа: %s", body)
 	}
+}
+
+func TestStartIndexSubscriberRunsBootstrapBeforeSubscriber(t *testing.T) {
+	ctx := context.Background()
+	order := make([]string, 0, 2)
+	runDone := make(chan struct{})
+	synchronizer := &fakeStartupSynchronizer{
+		catchUp: func(context.Context) error {
+			order = append(order, "catch-up")
+			return nil
+		},
+	}
+	subscriber := &fakeIndexSubscriberRunner{
+		run: func(context.Context) error {
+			defer close(runDone)
+			order = append(order, "run")
+			return nil
+		},
+	}
+
+	if err := startIndexSubscriber(ctx, synchronizer, subscriber); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-runDone:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber не был запущен")
+	}
+
+	if len(order) != 2 || order[0] != "catch-up" || order[1] != "run" {
+		t.Fatalf("неожиданный порядок запуска: %#v", order)
+	}
+}
+
+func TestStartIndexSubscriberDoesNotRunSubscriberAfterBootstrapError(t *testing.T) {
+	ctx := context.Background()
+	expectedErr := errors.New("catch-up failed")
+	synchronizer := &fakeStartupSynchronizer{
+		catchUp: func(context.Context) error {
+			return expectedErr
+		},
+	}
+	subscriber := &fakeIndexSubscriberRunner{
+		run: func(context.Context) error {
+			t.Fatal("subscriber не должен запускаться после ошибки bootstrap catch-up")
+			return nil
+		},
+	}
+
+	err := startIndexSubscriber(ctx, synchronizer, subscriber)
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("ожидалась ошибка bootstrap catch-up: %v", err)
+	}
+}
+
+type fakeStartupSynchronizer struct {
+	catchUp func(context.Context) error
+}
+
+func (s *fakeStartupSynchronizer) CatchUpAllIndexes(ctx context.Context) error {
+	return s.catchUp(ctx)
+}
+
+type fakeIndexSubscriberRunner struct {
+	run func(context.Context) error
+}
+
+func (r *fakeIndexSubscriberRunner) Run(ctx context.Context) error {
+	return r.run(ctx)
 }

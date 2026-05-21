@@ -42,6 +42,14 @@ type Job struct {
 	Update tgbotapi.Update
 }
 
+type indexStartupSynchronizer interface {
+	CatchUpAllIndexes(context.Context) error
+}
+
+type indexSubscriberRunner interface {
+	Run(context.Context) error
+}
+
 func main() {
 	const methodCtx = "cmd/main"
 
@@ -351,12 +359,9 @@ func main() {
 		if err != nil {
 			logging.Panic(methodCtx, err)
 		}
-		go func() {
-			if err := indexSubscriber.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				logging.Error(methodCtx, err)
-			}
-		}()
-		log.Println("RabbitMQ index events consumer запущен")
+		if err := startIndexSubscriber(ctx, synchronizer, indexSubscriber); err != nil {
+			logging.Panic(methodCtx, err)
+		}
 	}
 
 	if cfg.Metrics.Enabled {
@@ -422,6 +427,31 @@ func readinessProbe(dbPing readinessCheck, checkpoints ports.IndexCheckpointStor
 		}
 		return apperrors.Wrap(methodCtx, checkpoints.CheckFresh(ctx, consumerID, indexNames))
 	}
+}
+
+func startIndexSubscriber(ctx context.Context, synchronizer indexStartupSynchronizer, subscriber indexSubscriberRunner) error {
+	const methodCtx = "cmd/startIndexSubscriber"
+
+	if synchronizer == nil {
+		return apperrors.New(methodCtx, "index synchronizer не настроен")
+	}
+	if subscriber == nil {
+		return apperrors.New(methodCtx, "index subscriber не настроен")
+	}
+
+	log.Println("Начинается bootstrap catch-up локальных индексов")
+	if err := synchronizer.CatchUpAllIndexes(ctx); err != nil {
+		return apperrors.Wrap(methodCtx, err)
+	}
+	log.Println("Bootstrap catch-up локальных индексов завершен")
+
+	go func() {
+		if err := subscriber.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			logging.Error(methodCtx, err)
+		}
+	}()
+	log.Println("RabbitMQ index events consumer запущен")
+	return nil
 }
 
 func startHealthServer(ctx context.Context, address string, readiness readinessCheck) (*http.Server, error) {
