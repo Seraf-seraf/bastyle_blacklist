@@ -349,6 +349,9 @@ class RabbitMQIndexConsumer:
         self._stop = threading.Event()
 
     def start_background(self) -> threading.Thread:
+        LOGGER.info("Начинается bootstrap catch-up AI-vector индекса")
+        self._synchronizer.catch_up()
+        LOGGER.info("Bootstrap catch-up AI-vector индекса завершен")
         thread = threading.Thread(target=self.run, name="ai-vector-index-consumer", daemon=True)
         thread.start()
         return thread

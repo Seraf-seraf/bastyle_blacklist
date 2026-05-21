@@ -110,6 +110,42 @@ def test_ai_vector_applier_loads_saved_ban_by_uid():
     assert service.applied_ban_uids == [ban_uid]
 
 
+def test_rabbitmq_consumer_runs_bootstrap_catch_up_before_background_thread(monkeypatch):
+    order = []
+    synchronizer = MemorySynchronizer(order)
+
+    def fake_run(self):
+        order.append("run")
+
+    monkeypatch.setattr("ai_vector_service.index_events.RabbitMQIndexConsumer.run", fake_run)
+    consumer = _rabbitmq_consumer(synchronizer)
+
+    thread = consumer.start_background()
+    thread.join(timeout=1)
+
+    assert order == ["catch_up", "run"]
+
+
+def test_rabbitmq_consumer_does_not_start_thread_after_bootstrap_error(monkeypatch):
+    order = []
+    synchronizer = MemorySynchronizer(order, fail=True)
+
+    def fake_run(self):
+        raise AssertionError("consumer thread не должен запускаться после ошибки bootstrap")
+
+    monkeypatch.setattr("ai_vector_service.index_events.RabbitMQIndexConsumer.run", fake_run)
+    consumer = _rabbitmq_consumer(synchronizer)
+
+    try:
+        consumer.start_background()
+    except RuntimeError as err:
+        assert str(err) == "bootstrap failed"
+    else:
+        raise AssertionError("ожидалась ошибка bootstrap")
+
+    assert order == ["catch_up"]
+
+
 def test_row_to_event_unwraps_watermill_forwarder_envelope():
     event_uid = str(uuid.uuid4())
     aggregate_uid = str(uuid.uuid4())
@@ -208,6 +244,34 @@ class MemoryVectorIndexService:
     def apply_existing_ban(self, *, ban_uid):
         self.applied_ban_uids.append(ban_uid)
         return "applied"
+
+
+class MemorySynchronizer:
+    def __init__(self, order, fail=False):
+        self.order = order
+        self.fail = fail
+
+    def catch_up(self):
+        self.order.append("catch_up")
+        if self.fail:
+            raise RuntimeError("bootstrap failed")
+
+
+def _rabbitmq_consumer(synchronizer):
+    from ai_vector_service.index_events import RabbitMQIndexConsumer
+
+    return RabbitMQIndexConsumer(
+        rabbitmq_url="amqp://guest:guest@localhost:5672/",
+        exchange="bastyle.events",
+        exchange_type="topic",
+        queue_template="bastyle.replica.%s.events",
+        routing_keys=["media.ban.#"],
+        prefetch=1,
+        synchronizer=synchronizer,
+        consumer_id="ai-replica-1",
+        reconnect_interval=0.1,
+        catch_up_interval=0.1,
+    )
 
 
 def _event_after(event, transaction_id, offset):
