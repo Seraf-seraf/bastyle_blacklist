@@ -40,15 +40,17 @@
 - Telegram видео и документы;
 - видеоматериалы со значительными изменениями: кадрированием (crop), оверлеями, водяными знаками, изменением скорости или агрессивным монтажом.
 
-## Architecture
+## Архитектура
 
 Текущий runtime `v1.2.1` использует Docker Compose, Go Telegram bot, отдельный
-Python/FastAPI AI matcher и SQLite как локальное хранилище. Целевая архитектура
-масштабирования зафиксирована в [docs/README.md](docs/README.md):
-PostgreSQL primary становится единым source of truth, standby PostgreSQL
-используется для HA/read-only сценариев, RabbitMQ передает события обновления
-индексов, а локальные exact/imagehash/videolike/FAISS индексы являются
-производным cache.
+Python/FastAPI AI matcher, PostgreSQL как основное хранилище и RabbitMQ как
+канал сигналов для обновления производных индексов. Полная архитектура
+масштабирования зафиксирована в [docs/README.md](docs/README.md).
+
+PostgreSQL является источником истины для ban-записей, артефактов
+сопоставителей, ИИ-векторов, исходящего журнала Watermill и контрольных точек.
+Локальные exact/imagehash/videolike/FAISS индексы являются производными
+проекциями и могут быть восстановлены из PostgreSQL.
 
 ```text
 Telegram group
@@ -59,10 +61,14 @@ Telegram group
           -> image_hash matcher: perceptual hash for static media
           -> video_like matcher: FFmpeg frames + frame fingerprints
           -> ai_vector matcher: HTTP client
+          -> PostgreSQL primary
+              -> media_ban and matcher artifacts
+              -> Watermill outbox and index checkpoints
+          -> RabbitMQ publisher/consumer
               -> Python FastAPI AI vector service
+                  -> PostgreSQL primary
                   -> Pillow decoder
                   -> Transformers image embedding model
-                  -> SQLite source of truth
                   -> Faiss HNSW derived index
       -> Telegram delete message action
 ```
@@ -70,12 +76,14 @@ Telegram group
 Основной процесс написан на Go и отвечает за Telegram-интеграцию, проверку прав
 администратора, пайплайн модерации и удаление сообщений. AI-vector matching
 вынесен в отдельный долгоживущий Python/FastAPI сервис, чтобы модель загружалась
-один раз, а Go-бот обращался к ней по HTTP. SQLite хранит активные ban-записи и
-векторы, Faiss HNSW используется как производный индекс для быстрого поиска.
+один раз, а Go-бот обращался к ней по HTTP. PostgreSQL хранит активные
+ban-записи и векторы, FAISS HNSW используется как производный индекс для
+быстрого поиска.
 
-В целевой схеме per-replica SQLite убирается: все write-операции приложения идут
-в PostgreSQL primary, standby replicas остаются read-only до failover, а любой
-сомнительный локальный индекс пересобирается из PostgreSQL.
+SQLite на каждую реплику не входит в рабочую схему: все операции записи
+приложения идут в основной узел PostgreSQL, резервные реплики PostgreSQL
+остаются только для чтения до переключения основного узла, а любой сомнительный
+локальный индекс пересобирается из PostgreSQL.
 
 ## Структура проекта
 
@@ -97,7 +105,9 @@ infra/
 - FFmpeg для video-like matching и AI vector matching кадров;
 - Python service dependencies из `services/aimatcher/ai_vector_service/requirements.txt`, если включен
   `matching.ai_vector.enabled`;
-- доступ на запись к SQLite-файлу;
+- доступ к PostgreSQL;
+- доступ к RabbitMQ, если включены публикация исходящих событий или потребители
+  индексных событий;
 - бот добавлен в группу администратором;
 - у бота есть право удалять сообщения.
 
