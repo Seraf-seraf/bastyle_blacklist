@@ -86,11 +86,11 @@ func (o *BlockOrchestrator) Block(ctx context.Context, chatID int64, content dom
 
 		created := false
 		for _, item := range prepared {
-			blockCreated, err := item.handler.PersistBlock(ctx, tx, banUID, item.block)
+			result, err := item.handler.PersistBlock(ctx, tx, banUID, item.block)
 			if err != nil {
 				return err
 			}
-			created = created || blockCreated
+			created = created || result.Created
 		}
 
 		if !created {

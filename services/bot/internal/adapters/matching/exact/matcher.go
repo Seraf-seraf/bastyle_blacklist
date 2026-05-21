@@ -2,6 +2,7 @@ package exact
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -31,9 +32,12 @@ type exactRecord struct {
 
 type exactStore interface {
 	load(context.Context) ([]exactRecord, error)
-	Insert(context.Context, pgx.Tx, uuid.UUID, int64, string) (bool, error)
+	LoadByBanUID(context.Context, uuid.UUID) (exactRecord, error)
+	Insert(context.Context, pgx.Tx, uuid.UUID, int64, string) (ports.PersistBlockResult, error)
 	close() error
 }
+
+var errExactArtifactNotFound = errors.New("exact artifact не найден")
 
 func newMatcher(buffer int) (*matcher, error) {
 	const methodCtx = "exact/newMatcher"
@@ -107,12 +111,12 @@ type preparedBlock struct {
 	fileUniqueID string
 }
 
-func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (bool, error) {
+func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (ports.PersistBlockResult, error) {
 	const methodCtx = "exact/matcher.PersistBlock"
 
 	prepared, ok := block.(*preparedBlock)
 	if !ok {
-		return false, apperrors.New(methodCtx, "неверный тип prepared block exact")
+		return ports.PersistBlockResult{}, apperrors.New(methodCtx, "неверный тип prepared block exact")
 	}
 
 	return m.store.Insert(ctx, tx, banUID, prepared.chatID, prepared.fileUniqueID)
@@ -133,4 +137,33 @@ func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error
 	return nil
 }
 
+func (m *matcher) IndexName() string {
+	return ports.IndexExact
+}
+
+func (m *matcher) Supports(eventType string) bool {
+	return eventType == "media.ban.created.v1"
+}
+
+func (m *matcher) ApplyEvent(ctx context.Context, event ports.OutboxEvent) error {
+	const methodCtx = "exact/matcher.ApplyEvent"
+
+	if !m.Supports(event.EventType) {
+		return nil
+	}
+	record, err := m.store.LoadByBanUID(ctx, event.AggregateUID)
+	if err != nil {
+		if errors.Is(err, errExactArtifactNotFound) {
+			return nil
+		}
+		return apperrors.Wrap(methodCtx, err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.blocked[exactKey{chatID: record.ChatID, fileUniqueID: record.FileUniqueID}] = struct{}{}
+	return nil
+}
+
 var _ ports.ContentBlockMatcher = (*matcher)(nil)
+var _ ports.IndexEventApplier = (*matcher)(nil)

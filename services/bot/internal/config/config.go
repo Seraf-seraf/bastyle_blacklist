@@ -91,11 +91,14 @@ type Consumers struct {
 }
 
 type Consumer struct {
-	Enabled     bool     `yaml:"enabled"`
-	Queue       string   `yaml:"queue"`
-	RoutingKeys []string `yaml:"routing_keys"`
-	Prefetch    int      `yaml:"prefetch"`
-	RetryDelay  Duration `yaml:"retry_delay"`
+	Enabled          bool     `yaml:"enabled"`
+	ReplicaID        string   `yaml:"replica_id"`
+	QueueTemplate    string   `yaml:"queue_template"`
+	RoutingKeys      []string `yaml:"routing_keys"`
+	Prefetch         int      `yaml:"prefetch"`
+	RetryDelay       Duration `yaml:"retry_delay"`
+	CatchUpInterval  Duration `yaml:"catch_up_interval"`
+	CatchUpBatchSize int      `yaml:"catch_up_batch_size"`
 }
 
 type Metrics struct {
@@ -293,11 +296,13 @@ func defaultConfig() Config {
 		},
 		Consumers: Consumers{
 			IndexEvents: Consumer{
-				Enabled:     false,
-				Queue:       "bastyle.index-events",
-				RoutingKeys: []string{"media.ban.created.v1"},
-				Prefetch:    10,
-				RetryDelay:  Duration(5 * time.Second),
+				Enabled:          false,
+				QueueTemplate:    "bastyle.replica.%s.events",
+				RoutingKeys:      []string{"media.ban.#", "index.#"},
+				Prefetch:         10,
+				RetryDelay:       Duration(5 * time.Second),
+				CatchUpInterval:  Duration(5 * time.Second),
+				CatchUpBatchSize: 100,
 			},
 		},
 		Metrics: Metrics{
@@ -399,7 +404,7 @@ func (c Config) validate() error {
 	if err := c.Database.validate(); err != nil {
 		return apperrors.Wrap(methodCtx, err)
 	}
-	if c.OutboxPublisher.Enabled {
+	if c.OutboxPublisher.Enabled || c.Consumers.IndexEvents.Enabled {
 		if err := c.RabbitMQ.validate(); err != nil {
 			return apperrors.Wrap(methodCtx, err)
 		}
@@ -501,14 +506,28 @@ func (c Consumer) validate(name string) error {
 	if !c.Enabled {
 		return nil
 	}
-	if c.Queue == "" {
-		return apperrors.New(methodCtx, name+": queue consumer-а обязательна")
+	if c.QueueTemplate == "" {
+		return apperrors.New(methodCtx, name+": queue_template consumer-а обязателен")
+	}
+	if len(c.RoutingKeys) == 0 {
+		return apperrors.New(methodCtx, name+": routing_keys consumer-а обязательны")
+	}
+	for _, routingKey := range c.RoutingKeys {
+		if routingKey == "" {
+			return apperrors.New(methodCtx, name+": routing key consumer-а не должен быть пустым")
+		}
 	}
 	if c.Prefetch <= 0 {
 		return apperrors.New(methodCtx, name+": prefetch consumer-а должен быть положительным")
 	}
 	if c.RetryDelay.Value() <= 0 {
 		return apperrors.New(methodCtx, name+": retry delay consumer-а должен быть положительным")
+	}
+	if c.CatchUpInterval.Value() <= 0 {
+		return apperrors.New(methodCtx, name+": catch-up interval consumer-а должен быть положительным")
+	}
+	if c.CatchUpBatchSize <= 0 {
+		return apperrors.New(methodCtx, name+": catch-up batch size consumer-а должен быть положительным")
 	}
 
 	return nil

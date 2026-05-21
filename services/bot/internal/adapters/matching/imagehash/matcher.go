@@ -27,9 +27,17 @@ type matcher struct {
 
 type imageHashStore interface {
 	load(context.Context) ([]StoredImageHash, error)
-	Insert(context.Context, pgx.Tx, uuid.UUID, StoredImageHash) (int64, bool, error)
+	LoadByBanUID(context.Context, uuid.UUID) (StoredImageHash, error)
+	Insert(context.Context, pgx.Tx, uuid.UUID, StoredImageHash) (imageHashInsertResult, error)
 	close() error
 }
+
+type imageHashInsertResult struct {
+	ID      int64
+	Created bool
+}
+
+var errImageHashArtifactNotFound = errors.New("imagehash artifact не найден")
 
 func NewMatcher(downloader ports.MediaDownloader, extractor ports.MediaExtractor, threshold int, buffer int) (*matcher, error) {
 	const methodCtx = "imagehash/NewMatcher"
@@ -137,20 +145,20 @@ type preparedBlock struct {
 	hash StoredImageHash
 }
 
-func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (bool, error) {
+func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (ports.PersistBlockResult, error) {
 	const methodCtx = "imagehash/matcher.PersistBlock"
 
 	prepared, ok := block.(*preparedBlock)
 	if !ok {
-		return false, apperrors.New(methodCtx, "неверный тип prepared block imagehash")
+		return ports.PersistBlockResult{}, apperrors.New(methodCtx, "неверный тип prepared block imagehash")
 	}
 
-	id, created, err := m.store.Insert(ctx, tx, banUID, prepared.hash)
+	result, err := m.store.Insert(ctx, tx, banUID, prepared.hash)
 	if err != nil {
-		return false, err
+		return ports.PersistBlockResult{}, err
 	}
-	prepared.hash.ID = id
-	return created, nil
+	prepared.hash.ID = result.ID
+	return ports.PersistBlockResult{Created: result.Created}, nil
 }
 
 func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error {
@@ -166,6 +174,32 @@ func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error
 }
 
 var _ ports.ContentBlockMatcher = (*matcher)(nil)
+var _ ports.IndexEventApplier = (*matcher)(nil)
+
+func (m *matcher) IndexName() string {
+	return ports.IndexImageHash
+}
+
+func (m *matcher) Supports(eventType string) bool {
+	return eventType == "media.ban.created.v1"
+}
+
+func (m *matcher) ApplyEvent(ctx context.Context, event ports.OutboxEvent) error {
+	const methodCtx = "imagehash/matcher.ApplyEvent"
+
+	if !m.Supports(event.EventType) {
+		return nil
+	}
+	record, err := m.store.LoadByBanUID(ctx, event.AggregateUID)
+	if err != nil {
+		if errors.Is(err, errImageHashArtifactNotFound) {
+			return nil
+		}
+		return apperrors.Wrap(methodCtx, err)
+	}
+	m.index.Add(record)
+	return nil
+}
 
 type hashExtractor struct {
 	downloader ports.MediaDownloader

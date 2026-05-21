@@ -22,8 +22,8 @@ func (fakeBlocker) PrepareBlock(context.Context, int64, domain.Content) (ports.P
 	return nil, ports.ErrUnsupportedContent
 }
 
-func (fakeBlocker) PersistBlock(context.Context, pgx.Tx, uuid.UUID, ports.PreparedBlock) (bool, error) {
-	return false, nil
+func (fakeBlocker) PersistBlock(context.Context, pgx.Tx, uuid.UUID, ports.PreparedBlock) (ports.PersistBlockResult, error) {
+	return ports.PersistBlockResult{}, nil
 }
 
 func (fakeBlocker) ApplyBlock(context.Context, ports.PreparedBlock) error {

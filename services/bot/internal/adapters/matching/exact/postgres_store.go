@@ -3,6 +3,7 @@ package exact
 import (
 	"context"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,7 +18,7 @@ func NewPostgresStore(pool *pgxpool.Pool) *postgresStore {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, fileUniqueID string) (bool, error) {
+func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, chatID int64, fileUniqueID string) (ports.PersistBlockResult, error) {
 	const methodCtx = "exact/postgresStore.Insert"
 
 	tag, err := tx.Exec(ctx, `
@@ -26,10 +27,29 @@ VALUES ($1, $2, $3)
 ON CONFLICT (chat_id, file_unique_id) DO NOTHING
 `, banUID, chatID, fileUniqueID)
 	if err != nil {
-		return false, apperrors.Wrap(methodCtx, err)
+		return ports.PersistBlockResult{}, apperrors.Wrap(methodCtx, err)
 	}
 
-	return tag.RowsAffected() > 0, nil
+	return ports.PersistBlockResult{Created: tag.RowsAffected() > 0}, nil
+}
+
+func (s *postgresStore) LoadByBanUID(ctx context.Context, banUID uuid.UUID) (exactRecord, error) {
+	const methodCtx = "exact/postgresStore.LoadByBanUID"
+
+	var record exactRecord
+	err := s.pool.QueryRow(ctx, `
+SELECT be.chat_id, be.file_unique_id
+FROM blocked_exact be
+JOIN media_ban mb ON mb.ban_uid = be.ban_uid
+WHERE be.ban_uid = $1 AND mb.active = TRUE
+`, banUID).Scan(&record.ChatID, &record.FileUniqueID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return exactRecord{}, errExactArtifactNotFound
+		}
+		return exactRecord{}, apperrors.Wrap(methodCtx, err)
+	}
+	return record, nil
 }
 
 func (s *postgresStore) Deactivate(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {

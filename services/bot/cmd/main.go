@@ -15,6 +15,7 @@ import (
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/database/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/httpclient"
+	indexcheckpointpostgres "github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/indexcheckpoint/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/aivector"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/exact"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/matching/imagehash"
@@ -24,6 +25,7 @@ import (
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/messaging/rabbitmq"
 	outboxpostgres "github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/outbox/postgres"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/adapters/telegram"
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/indexsync"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/moderation"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/outboxpublisher"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
@@ -291,6 +293,65 @@ func main() {
 			}
 		}()
 		log.Println("Watermill outbox publisher запущен")
+	}
+
+	if cfg.Consumers.IndexEvents.Enabled {
+		checkpointStore, err := indexcheckpointpostgres.NewStore(dbPool.Raw())
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		eventReader, err := outboxpostgres.NewEventReader(dbPool.Raw())
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		appliers := make([]ports.IndexEventApplier, 0, len(matchers))
+		for _, matcher := range matchers {
+			applier, ok := matcher.(ports.IndexEventApplier)
+			if ok {
+				appliers = append(appliers, applier)
+			}
+		}
+		if len(appliers) == 0 {
+			logging.Panic(methodCtx, apperrors.New(methodCtx, "нет index applier-ов для index_events consumer-а"))
+		}
+		replicaID := cfg.Consumers.IndexEvents.ReplicaID
+		if replicaID == "" {
+			hostname, err := os.Hostname()
+			if err != nil {
+				logging.Panic(methodCtx, err)
+			}
+			replicaID = hostname
+		}
+		synchronizer, err := indexsync.New(indexsync.Config{
+			ConsumerID:  replicaID,
+			BatchSize:   cfg.Consumers.IndexEvents.CatchUpBatchSize,
+			Reader:      eventReader,
+			Checkpoints: checkpointStore,
+			Appliers:    appliers,
+		})
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		indexSubscriber, err := rabbitmq.NewIndexSubscriber(rabbitmq.IndexSubscriberConfig{
+			URL:             cfg.RabbitMQ.URL,
+			Exchange:        cfg.RabbitMQ.Exchange,
+			ExchangeType:    cfg.RabbitMQ.ExchangeType,
+			ReplicaID:       replicaID,
+			QueueTemplate:   cfg.Consumers.IndexEvents.QueueTemplate,
+			RoutingKeys:     cfg.Consumers.IndexEvents.RoutingKeys,
+			Prefetch:        cfg.Consumers.IndexEvents.Prefetch,
+			ReconnectDelay:  cfg.RabbitMQ.ReconnectInterval.Value(),
+			CatchUpInterval: cfg.Consumers.IndexEvents.CatchUpInterval.Value(),
+		}, synchronizer)
+		if err != nil {
+			logging.Panic(methodCtx, err)
+		}
+		go func() {
+			if err := indexSubscriber.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logging.Error(methodCtx, err)
+			}
+		}()
+		log.Println("RabbitMQ index events consumer запущен")
 	}
 
 	if cfg.Metrics.Enabled {

@@ -50,11 +50,15 @@ outbox_publisher:
 consumers:
   index_events:
     enabled: true
-    queue: "test.index-events"
+    replica_id: "replica-1"
+    queue_template: "bastyle.replica.%s.events"
     routing_keys:
-      - "media.ban.created.v1"
+      - "media.ban.#"
+      - "index.#"
     prefetch: 4
     retry_delay: 8s
+    catch_up_interval: 9s
+    catch_up_batch_size: 12
 metrics:
   enabled: true
   host: "127.0.0.1"
@@ -194,11 +198,23 @@ matching:
 	if !cfg.Consumers.IndexEvents.Enabled {
 		t.Fatal("ожидалось, что index_events consumer будет включен")
 	}
-	if cfg.Consumers.IndexEvents.Queue != "test.index-events" {
-		t.Fatalf("неожиданное значение index_events queue: %q", cfg.Consumers.IndexEvents.Queue)
+	if cfg.Consumers.IndexEvents.ReplicaID != "replica-1" {
+		t.Fatalf("неожиданное значение index_events replica_id: %q", cfg.Consumers.IndexEvents.ReplicaID)
+	}
+	if cfg.Consumers.IndexEvents.QueueTemplate != "bastyle.replica.%s.events" {
+		t.Fatalf("неожиданное значение index_events queue_template: %q", cfg.Consumers.IndexEvents.QueueTemplate)
+	}
+	if len(cfg.Consumers.IndexEvents.RoutingKeys) != 2 || cfg.Consumers.IndexEvents.RoutingKeys[0] != "media.ban.#" || cfg.Consumers.IndexEvents.RoutingKeys[1] != "index.#" {
+		t.Fatalf("неожиданное значение index_events routing_keys: %#v", cfg.Consumers.IndexEvents.RoutingKeys)
 	}
 	if cfg.Consumers.IndexEvents.Prefetch != 4 {
 		t.Fatalf("неожиданное значение index_events prefetch: %d", cfg.Consumers.IndexEvents.Prefetch)
+	}
+	if cfg.Consumers.IndexEvents.CatchUpInterval.Value() != 9*time.Second {
+		t.Fatalf("неожиданное значение index_events catch_up_interval: %s", cfg.Consumers.IndexEvents.CatchUpInterval.Value())
+	}
+	if cfg.Consumers.IndexEvents.CatchUpBatchSize != 12 {
+		t.Fatalf("неожиданное значение index_events catch_up_batch_size: %d", cfg.Consumers.IndexEvents.CatchUpBatchSize)
 	}
 	if cfg.Metrics.Address() != "127.0.0.1:19090" {
 		t.Fatalf("неожиданное значение metrics address: %q", cfg.Metrics.Address())
@@ -371,6 +387,12 @@ telegram:
 	}
 	if cfg.Consumers.IndexEvents.Enabled {
 		t.Fatal("ожидалось, что index_events consumer по умолчанию будет выключен")
+	}
+	if cfg.Consumers.IndexEvents.QueueTemplate != "bastyle.replica.%s.events" {
+		t.Fatalf("неожиданное значение по умолчанию: index_events queue_template: %q", cfg.Consumers.IndexEvents.QueueTemplate)
+	}
+	if cfg.Consumers.IndexEvents.CatchUpBatchSize != 100 {
+		t.Fatalf("неожиданное значение по умолчанию: index_events catch_up_batch_size: %d", cfg.Consumers.IndexEvents.CatchUpBatchSize)
 	}
 	if cfg.Metrics.Path != "/metrics" {
 		t.Fatalf("неожиданное значение по умолчанию: metrics path: %q", cfg.Metrics.Path)
@@ -680,7 +702,7 @@ telegram:
 consumers:
   index_events:
     enabled: true
-    queue: ""
+    queue_template: ""
 `)
 
 	_, err := Load(path)

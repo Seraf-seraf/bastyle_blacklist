@@ -19,7 +19,7 @@ func NewPostgresStore(pool *pgxpool.Pool) *postgresStore {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredImageHash) (int64, bool, error) {
+func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredImageHash) (imageHashInsertResult, error) {
 	const methodCtx = "imagehash/postgresStore.Insert"
 
 	signature := hashSignature(hash.Hashes)
@@ -39,7 +39,7 @@ WHERE chat_id = $2 AND hash_version = $5 AND hash_signature = $6
 LIMIT 1
 `, banUID, hash.ChatID, hash.FileUniqueID, string(hash.MediaType), hashVersion, signature).Scan(&id, &storedBanUID)
 	if err != nil {
-		return 0, false, apperrors.Wrap(methodCtx, err)
+		return imageHashInsertResult{}, apperrors.Wrap(methodCtx, err)
 	}
 	created := storedBanUID == banUID
 
@@ -57,10 +57,51 @@ FROM unnest($2::int[], $3::text[]) AS h(variant, hash_uint64)
 ON CONFLICT (image_id, variant) DO NOTHING
 `, id, variants, values)
 	if err != nil {
-		return 0, false, apperrors.Wrap(methodCtx, err)
+		return imageHashInsertResult{}, apperrors.Wrap(methodCtx, err)
 	}
 
-	return id, created, nil
+	return imageHashInsertResult{ID: id, Created: created}, nil
+}
+
+func (s *postgresStore) LoadByBanUID(ctx context.Context, banUID uuid.UUID) (StoredImageHash, error) {
+	const methodCtx = "imagehash/postgresStore.LoadByBanUID"
+
+	rows, err := s.pool.Query(ctx, `
+SELECT bi.id, bi.chat_id, bi.file_unique_id, bi.media_type, bih.hash_uint64
+FROM blocked_image bi
+JOIN media_ban mb ON mb.ban_uid = bi.ban_uid
+JOIN blocked_image_hash bih ON bih.image_id = bi.id
+WHERE bi.ban_uid = $1 AND mb.active = TRUE AND bi.hash_version = $2
+ORDER BY bih.variant
+`, banUID, hashVersion)
+	if err != nil {
+		return StoredImageHash{}, apperrors.Wrap(methodCtx, err)
+	}
+	defer rows.Close()
+
+	var record StoredImageHash
+	found := false
+	for rows.Next() {
+		var mediaType string
+		var hashText string
+		if err := rows.Scan(&record.ID, &record.ChatID, &record.FileUniqueID, &mediaType, &hashText); err != nil {
+			return StoredImageHash{}, apperrors.Wrap(methodCtx, err)
+		}
+		record.MediaType = domain.MediaType(mediaType)
+		value, err := strconv.ParseUint(hashText, 10, 64)
+		if err != nil {
+			return StoredImageHash{}, apperrors.Wrap(methodCtx, err)
+		}
+		record.Hashes = append(record.Hashes, value)
+		found = true
+	}
+	if err := rows.Err(); err != nil {
+		return StoredImageHash{}, apperrors.Wrap(methodCtx, err)
+	}
+	if !found {
+		return StoredImageHash{}, errImageHashArtifactNotFound
+	}
+	return record, nil
 }
 
 func (s *postgresStore) Deactivate(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {

@@ -456,17 +456,17 @@ type preparedVectorFrame struct {
 	Vector         []float32
 }
 
-func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (bool, error) {
+func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (ports.PersistBlockResult, error) {
 	const methodCtx = "aivector/matcher.PersistBlock"
 
 	prepared, ok := block.(*preparedBlock)
 	if !ok || prepared == nil {
-		return false, apperrors.New(methodCtx, "неверный тип prepared block AI-vector")
+		return ports.PersistBlockResult{}, apperrors.New(methodCtx, "неверный тип prepared block AI-vector")
 	}
 
 	signature, err := vectorSignature(prepared.vectorFrames, prepared.vectorDim)
 	if err != nil {
-		return false, apperrors.Wrap(methodCtx, err)
+		return ports.PersistBlockResult{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	var storedBanUID uuid.UUID
@@ -508,7 +508,7 @@ LIMIT 1
 		signature,
 	).Scan(&prepared.banID, &storedBanUID)
 	if err != nil {
-		return false, apperrors.Wrap(methodCtx, err)
+		return ports.PersistBlockResult{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	created := storedBanUID == banUID
@@ -520,7 +520,7 @@ LIMIT 1
 	for _, frame := range prepared.vectorFrames {
 		blob, err := vectorBlob(frame.Vector, prepared.vectorDim)
 		if err != nil {
-			return false, apperrors.Wrap(methodCtx, err)
+			return ports.PersistBlockResult{}, apperrors.Wrap(methodCtx, err)
 		}
 
 		frameIndexes = append(frameIndexes, int32(frame.FrameIndex))
@@ -553,10 +553,10 @@ ON CONFLICT (ban_id, frame_index) DO NOTHING
 		vectorBlobs,
 	)
 	if err != nil {
-		return false, apperrors.Wrap(methodCtx, err)
+		return ports.PersistBlockResult{}, apperrors.Wrap(methodCtx, err)
 	}
 
-	return created, nil
+	return ports.PersistBlockResult{Created: created}, nil
 }
 
 func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error {

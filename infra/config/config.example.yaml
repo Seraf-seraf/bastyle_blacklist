@@ -46,11 +46,15 @@ outbox_publisher:
 consumers:
   index_events:
     enabled: false
-    queue: "bastyle.index-events"
+    replica_id: ""
+    queue_template: "bastyle.replica.%s.events"
     routing_keys:
-      - "media.ban.created.v1"
+      - "media.ban.#"
+      - "index.#"
     prefetch: 10
     retry_delay: 5s
+    catch_up_interval: 5s
+    catch_up_batch_size: 100
 
 metrics:
   enabled: true

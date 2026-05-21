@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Seraf-seraf/bastyle_blacklist/internal/app/ports"
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -87,15 +88,19 @@ func (s *memoryExactStore) load(context.Context) ([]exactRecord, error) {
 	return append([]exactRecord(nil), s.records...), nil
 }
 
-func (s *memoryExactStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, chatID int64, fileUniqueID string) (bool, error) {
+func (s *memoryExactStore) LoadByBanUID(context.Context, uuid.UUID) (exactRecord, error) {
+	return exactRecord{}, errExactArtifactNotFound
+}
+
+func (s *memoryExactStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, chatID int64, fileUniqueID string) (ports.PersistBlockResult, error) {
 	for _, record := range s.records {
 		if record.ChatID == chatID && record.FileUniqueID == fileUniqueID {
-			return false, nil
+			return ports.PersistBlockResult{}, nil
 		}
 	}
 
 	s.records = append(s.records, exactRecord{ChatID: chatID, FileUniqueID: fileUniqueID})
-	return true, nil
+	return ports.PersistBlockResult{Created: true}, nil
 }
 
 func (s *memoryExactStore) close() error {

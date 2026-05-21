@@ -612,17 +612,21 @@ func (s *memoryVideoLikeStore) load(context.Context) ([]StoredVideoLikeHash, err
 	return append([]StoredVideoLikeHash(nil), s.hashes...), nil
 }
 
-func (s *memoryVideoLikeStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, hash StoredVideoLikeHash) (int64, bool, error) {
+func (s *memoryVideoLikeStore) LoadByBanUID(context.Context, uuid.UUID) (StoredVideoLikeHash, error) {
+	return StoredVideoLikeHash{}, errVideoLikeArtifactNotFound
+}
+
+func (s *memoryVideoLikeStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, hash StoredVideoLikeHash) (videoLikeInsertResult, error) {
 	signature := videoLikeIndexSignature(hash)
 	for _, stored := range s.hashes {
 		if videoLikeIndexSignature(stored) == signature {
-			return stored.ID, false, nil
+			return videoLikeInsertResult{ID: stored.ID}, nil
 		}
 	}
 	s.nextID++
 	hash.ID = s.nextID
 	s.hashes = append(s.hashes, hash)
-	return hash.ID, true, nil
+	return videoLikeInsertResult{ID: hash.ID, Created: true}, nil
 }
 
 func (s *memoryVideoLikeStore) close() error {

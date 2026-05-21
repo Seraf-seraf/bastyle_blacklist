@@ -13,6 +13,10 @@ var ErrUnsupportedContent = errors.New("matcher не поддерживает э
 
 type PreparedBlock any
 
+type PersistBlockResult struct {
+	Created bool
+}
+
 type ContentBlockPreparer interface {
 	// PrepareBlock вычисляет данные для ban без записи в БД и без изменения локальных индексов.
 	// Если matcher не поддерживает content, метод возвращает ErrUnsupportedContent.
@@ -24,8 +28,8 @@ type ContentBlockMatcher interface {
 	ContentBlockPreparer
 
 	// PersistBlock сохраняет prepared block в PostgreSQL внутри общей транзакции /ban.
-	// Возвращает true, если artifact был создан, и false, если запись уже существовала.
-	PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block PreparedBlock) (bool, error)
+	// Возвращает результат сохранения artifact-а.
+	PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block PreparedBlock) (PersistBlockResult, error)
 
 	// ApplyBlock обновляет локальную производную проекцию matcher-а, например in-memory индекс.
 	// Метод вызывается только после успешного commit PostgreSQL-транзакции.

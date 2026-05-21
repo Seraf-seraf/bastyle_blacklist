@@ -170,17 +170,21 @@ func (s *memoryImageHashStore) load(context.Context) ([]StoredImageHash, error) 
 	return append([]StoredImageHash(nil), s.hashes...), nil
 }
 
-func (s *memoryImageHashStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, hash StoredImageHash) (int64, bool, error) {
+func (s *memoryImageHashStore) LoadByBanUID(context.Context, uuid.UUID) (StoredImageHash, error) {
+	return StoredImageHash{}, errImageHashArtifactNotFound
+}
+
+func (s *memoryImageHashStore) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, hash StoredImageHash) (imageHashInsertResult, error) {
 	signature := imageHashIndexSignature(hash)
 	for _, stored := range s.hashes {
 		if imageHashIndexSignature(stored) == signature {
-			return stored.ID, false, nil
+			return imageHashInsertResult{ID: stored.ID}, nil
 		}
 	}
 	s.nextID++
 	hash.ID = s.nextID
 	s.hashes = append(s.hashes, hash)
-	return hash.ID, true, nil
+	return imageHashInsertResult{ID: hash.ID, Created: true}, nil
 }
 
 func (s *memoryImageHashStore) close() error {

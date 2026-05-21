@@ -24,9 +24,17 @@ type matcher struct {
 
 type videoLikeStore interface {
 	load(context.Context) ([]StoredVideoLikeHash, error)
-	Insert(context.Context, pgx.Tx, uuid.UUID, StoredVideoLikeHash) (int64, bool, error)
+	LoadByBanUID(context.Context, uuid.UUID) (StoredVideoLikeHash, error)
+	Insert(context.Context, pgx.Tx, uuid.UUID, StoredVideoLikeHash) (videoLikeInsertResult, error)
 	close() error
 }
+
+type videoLikeInsertResult struct {
+	ID      int64
+	Created bool
+}
+
+var errVideoLikeArtifactNotFound = errors.New("videolike artifact не найден")
 
 type Limits struct {
 	MaxAnimationDuration    time.Duration
@@ -179,23 +187,23 @@ type preparedBlock struct {
 	fingerprint StoredVideoLikeHash
 }
 
-func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (bool, error) {
+func (m *matcher) PersistBlock(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, block ports.PreparedBlock) (ports.PersistBlockResult, error) {
 	const methodCtx = "videolike/matcher.PersistBlock"
 
 	prepared, ok := block.(*preparedBlock)
 	if !ok {
-		return false, apperrors.New(methodCtx, "неверный тип prepared block videolike")
+		return ports.PersistBlockResult{}, apperrors.New(methodCtx, "неверный тип prepared block videolike")
 	}
 	if m.store == nil {
-		return false, apperrors.New(methodCtx, "PostgreSQL-хранилище videolike не настроено")
+		return ports.PersistBlockResult{}, apperrors.New(methodCtx, "PostgreSQL-хранилище videolike не настроено")
 	}
 
-	id, created, err := m.store.Insert(ctx, tx, banUID, prepared.fingerprint)
+	result, err := m.store.Insert(ctx, tx, banUID, prepared.fingerprint)
 	if err != nil {
-		return false, err
+		return ports.PersistBlockResult{}, err
 	}
-	prepared.fingerprint.ID = id
-	return created, nil
+	prepared.fingerprint.ID = result.ID
+	return ports.PersistBlockResult{Created: result.Created}, nil
 }
 
 func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error {
@@ -207,6 +215,31 @@ func (m *matcher) ApplyBlock(_ context.Context, block ports.PreparedBlock) error
 	}
 
 	m.index.Add(prepared.fingerprint)
+	return nil
+}
+
+func (m *matcher) IndexName() string {
+	return ports.IndexVideoLike
+}
+
+func (m *matcher) Supports(eventType string) bool {
+	return eventType == "media.ban.created.v1"
+}
+
+func (m *matcher) ApplyEvent(ctx context.Context, event ports.OutboxEvent) error {
+	const methodCtx = "videolike/matcher.ApplyEvent"
+
+	if !m.Supports(event.EventType) {
+		return nil
+	}
+	record, err := m.store.LoadByBanUID(ctx, event.AggregateUID)
+	if err != nil {
+		if errors.Is(err, errVideoLikeArtifactNotFound) {
+			return nil
+		}
+		return apperrors.Wrap(methodCtx, err)
+	}
+	m.index.Add(record)
 	return nil
 }
 
@@ -224,6 +257,7 @@ func (m *matcher) supports(ctx context.Context, content domain.Content) (bool, e
 }
 
 var _ ports.ContentBlockMatcher = (*matcher)(nil)
+var _ ports.IndexEventApplier = (*matcher)(nil)
 
 type fingerprintExtractor struct {
 	downloader ports.MediaDownloader

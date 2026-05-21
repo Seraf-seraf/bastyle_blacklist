@@ -19,11 +19,11 @@ func NewPostgresStore(pool *pgxpool.Pool) *postgresStore {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredVideoLikeHash) (int64, bool, error) {
+func (s *postgresStore) Insert(ctx context.Context, tx pgx.Tx, banUID uuid.UUID, hash StoredVideoLikeHash) (videoLikeInsertResult, error) {
 	const methodCtx = "videolike/postgresStore.Insert"
 
 	if len(hash.Frames) == 0 {
-		return 0, false, apperrors.New(methodCtx, "PostgreSQL-хранилище video-like: кадры хеша пустые")
+		return videoLikeInsertResult{}, apperrors.New(methodCtx, "PostgreSQL-хранилище video-like: кадры хеша пустые")
 	}
 
 	hashVersion := hash.HashVersion
@@ -50,7 +50,7 @@ WHERE chat_id = $2 AND hash_version = $6 AND hash_signature = $7
 LIMIT 1
 `, banUID, hash.ChatID, hash.FileUniqueID, string(hash.SourceType), hash.DurationSec, hashVersion, signature).Scan(&id, &storedBanUID)
 	if err != nil {
-		return 0, false, apperrors.Wrap(methodCtx, err)
+		return videoLikeInsertResult{}, apperrors.Wrap(methodCtx, err)
 	}
 	created := storedBanUID == banUID
 
@@ -70,10 +70,64 @@ FROM unnest($2::int[], $3::int[], $4::text[]) AS h(frame_index, position_millis,
 ON CONFLICT (video_like_id, frame_index) DO NOTHING
 `, id, frameIndexes, positionMillis, hashes)
 	if err != nil {
-		return 0, false, apperrors.Wrap(methodCtx, err)
+		return videoLikeInsertResult{}, apperrors.Wrap(methodCtx, err)
 	}
 
-	return id, created, nil
+	return videoLikeInsertResult{ID: id, Created: created}, nil
+}
+
+func (s *postgresStore) LoadByBanUID(ctx context.Context, banUID uuid.UUID) (StoredVideoLikeHash, error) {
+	const methodCtx = "videolike/postgresStore.LoadByBanUID"
+
+	rows, err := s.pool.Query(ctx, `
+SELECT bvl.id, bvl.chat_id, bvl.file_unique_id, bvl.source_type, bvl.duration_sec, bvl.hash_version,
+       bvlfh.frame_index, bvlfh.position_millis, bvlfh.hash_uint64
+FROM blocked_video_like bvl
+JOIN media_ban mb ON mb.ban_uid = bvl.ban_uid
+JOIN blocked_video_like_frame_hash bvlfh ON bvlfh.video_like_id = bvl.id
+WHERE bvl.ban_uid = $1 AND mb.active = TRUE AND bvl.hash_version = $2
+ORDER BY bvlfh.frame_index
+`, banUID, videoLikeHashVersion)
+	if err != nil {
+		return StoredVideoLikeHash{}, apperrors.Wrap(methodCtx, err)
+	}
+	defer rows.Close()
+
+	var record StoredVideoLikeHash
+	found := false
+	for rows.Next() {
+		var sourceType string
+		var hashText string
+		var frame StoredVideoLikeFrameHash
+		if err := rows.Scan(
+			&record.ID,
+			&record.ChatID,
+			&record.FileUniqueID,
+			&sourceType,
+			&record.DurationSec,
+			&record.HashVersion,
+			&frame.FrameIndex,
+			&frame.PositionMillis,
+			&hashText,
+		); err != nil {
+			return StoredVideoLikeHash{}, apperrors.Wrap(methodCtx, err)
+		}
+		record.SourceType = domain.MediaType(sourceType)
+		value, err := strconv.ParseUint(hashText, 10, 64)
+		if err != nil {
+			return StoredVideoLikeHash{}, apperrors.Wrap(methodCtx, err)
+		}
+		frame.Hash = value
+		record.Frames = append(record.Frames, frame)
+		found = true
+	}
+	if err := rows.Err(); err != nil {
+		return StoredVideoLikeHash{}, apperrors.Wrap(methodCtx, err)
+	}
+	if !found {
+		return StoredVideoLikeHash{}, errVideoLikeArtifactNotFound
+	}
+	return record, nil
 }
 
 func (s *postgresStore) Deactivate(ctx context.Context, tx pgx.Tx, banUID uuid.UUID) error {
