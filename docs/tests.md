@@ -10,6 +10,7 @@
 | Go-бот                       | `cd services/bot && make test`                       | Unit и функциональные тесты Go-бота без build tag `integration`. Часть функциональных тестов поднимает PostgreSQL через testcontainers. |
 | Go-бот, интеграционные тесты | `cd services/bot && go test -tags integration ./...` | Тесты с внешними зависимостями, например PostgreSQL и RabbitMQ через testcontainers.                                                     |
 | AI matcher                   | `make -C services/aimatcher test`                    | Pytest-тесты Python/FastAPI сервиса.                                                                                                    |
+| Docker Compose PostgreSQL    | `make migrate` после `docker compose -f infra/docker-compose.yaml --project-directory . up -d bastyle-postgresql` | Применяет PostgreSQL migrations к постоянному compose-сервису `bastyle-postgresql`; `make db-status` показывает статус goose migrations, `make db-shell` открывает `psql`, `make db-logs` показывает логи БД. |
 
 Интеграционные тесты с PostgreSQL и RabbitMQ используют testcontainers и требуют доступный
 Docker. Тесты FFmpeg пропускаются, если бинарный файл `ffmpeg` недоступен.
