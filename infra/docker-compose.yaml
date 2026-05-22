@@ -5,9 +5,11 @@ services:
       dockerfile: infra/docker/Dockerfile.bot
     image: bastyle-blacklist:local
     restart: unless-stopped
+    networks:
+      - bastyle-internal
     volumes:
-      - ./config/config.yaml:/etc/bastyle/config.yaml:ro
-      - bastyle-data:/var/lib/bastyle
+      - ./infra/config/config.yaml:/etc/bastyle/config.yaml:ro
+      - bastyle-blacklist-data:/var/lib/bastyle
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
       interval: 30s
@@ -20,7 +22,10 @@ services:
           cpus: "4"
           memory: 512M
     depends_on:
-      - bastyle-rabbitmq
+      bastyle-postgresql:
+        condition: service_healthy
+      bastyle-rabbitmq:
+        condition: service_started
 
   bastyle-aimatcher:
     build:
@@ -28,9 +33,14 @@ services:
       dockerfile: infra/docker/Dockerfile.aimatcher
     image: bastyle-aimatcher:local
     restart: unless-stopped
+    networks:
+      - bastyle-internal
     volumes:
-      - ./config/config.yaml:/app/infra/config/config.yaml:ro
-      - bastyle-data:/var/lib/bastyle
+      - ./infra/config/config.yaml:/app/infra/config/config.yaml:ro
+      - bastyle-aimatcher-data:/var/lib/bastyle
+    depends_on:
+      bastyle-postgresql:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -49,12 +59,34 @@ services:
           cpus: "4"
           memory: 2G
 
+  bastyle-postgresql:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - bastyle-internal
+    environment:
+      POSTGRES_DB: bastyle
+      POSTGRES_USER: bastyle
+      POSTGRES_PASSWORD: bastyle
+    volumes:
+      - bastyle-postgresql:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bastyle -d bastyle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+
   bastyle-rabbitmq:
     image: rabbitmq:4.1.1-management
     restart: unless-stopped
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    networks:
+      - bastyle-internal
     volumes:
       - bastyle-rabbitmq:/var/lib/rabbitmq
     healthcheck:
@@ -70,5 +102,11 @@ services:
           memory: 512M
 
 volumes:
-  bastyle-data:
+  bastyle-blacklist-data:
+  bastyle-aimatcher-data:
+  bastyle-postgresql:
   bastyle-rabbitmq:
+
+networks:
+  bastyle-internal:
+    name: bastyle-internal
