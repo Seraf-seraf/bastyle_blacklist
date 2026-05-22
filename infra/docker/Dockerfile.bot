@@ -6,7 +6,7 @@ COPY services/bot/go.mod services/bot/go.sum ./
 RUN go mod download
 
 COPY services/bot/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bastyle-blacklist ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bastyle-blacklist ./cmd/
 
 FROM debian:bookworm-slim
 

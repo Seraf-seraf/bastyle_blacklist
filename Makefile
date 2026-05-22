@@ -51,7 +51,7 @@ db-status:
 	$(MAKE) -C $(BOT_DIR) db-status
 
 up:
-	$(COMPOSE) up -d --build
+	$(COMPOSE) up -d --build --pull missing
 
 stop:
 	$(COMPOSE) stop
