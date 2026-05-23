@@ -36,7 +36,7 @@ services:
     networks:
       - bastyle-internal
     volumes:
-      - ./infra/config/config.yaml:/app/infra/config/config.yaml:ro
+      - ./infra/config/config.yaml:/etc/bastyle/config.yaml:ro
       - bastyle-aimatcher-data:/var/lib/bastyle
     depends_on:
       bastyle-postgresql:
