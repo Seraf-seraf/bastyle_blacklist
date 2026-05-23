@@ -7,7 +7,6 @@
 *.sqlite-wal
 vendor/
 main
-bastyle
 infra/bin/
 data/
 __pycache__/

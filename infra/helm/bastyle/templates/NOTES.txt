@@ -1,0 +1,13 @@
+Bastyle Helm chart has been rendered.
+
+Release:
+  Name: {{ .Release.Name }}
+  Namespace: {{ .Release.Namespace }}
+
+Useful commands:
+
+  helm lint deploy/helm/bastyle
+
+  helm template {{ .Release.Name }} deploy/helm/bastyle
+
+  kubectl get pods -n {{ .Release.Namespace }}

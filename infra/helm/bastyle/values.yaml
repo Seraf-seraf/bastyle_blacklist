@@ -1,0 +1,34 @@
+externalDatabase:
+  enabled: true
+  host: ""
+  port: 5432
+  name: "bastyle"
+  user: "bastyle"
+  existingSecret: ""
+  existingSecretPasswordKey: "password"
+  sslmode: "require"
+
+postgresql:
+  enabled: false
+  image: "postgres:16-alpine"
+  storageSize: "10Gi"
+  database: "bastyle"
+  user: "bastyle"
+  existingSecret: ""
+  existingSecretPasswordKey: "password"
+
+migrations:
+  enabled: true
+  backoffLimit: 3
+
+bot:
+  replicaCount: 3
+  image:
+    repository: "bastyle-blacklist"
+    tag: "local"
+
+aimatcher:
+  enabled: true
+  image:
+    repository: "bastyle-aimatcher"
+    tag: "local"
