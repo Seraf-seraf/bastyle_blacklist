@@ -11,6 +11,7 @@
 | Go-бот, интеграционные тесты | `cd services/bot && go test -tags integration ./...` | Тесты с внешними зависимостями, например PostgreSQL и RabbitMQ через testcontainers.                                                     |
 | AI matcher                   | `make -C services/aimatcher test`                    | Pytest-тесты Python/FastAPI сервиса.                                                                                                    |
 | Docker Compose PostgreSQL    | `make migrate` после `docker compose -f infra/docker-compose.yaml --project-directory . up -d bastyle-postgresql` | Применяет PostgreSQL migrations к постоянному compose-сервису `bastyle-postgresql`; `make db-status` показывает статус goose migrations, `make db-shell` открывает `psql`, `make db-logs` показывает логи БД. |
+| PostgreSQL replication lab   | `make pgrp-up && make pgrp-check && make pgrp-failover && make pgrp-down` | Поднимает учебный стенд manual streaming replication, проверяет async WAL stream, replication lag, WAL archive, репликацию контрольной строки и ручной promote standby. |
 
 Интеграционные тесты с PostgreSQL и RabbitMQ используют testcontainers и требуют доступный
 Docker. Тесты FFmpeg пропускаются, если бинарный файл `ffmpeg` недоступен.

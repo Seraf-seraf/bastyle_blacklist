@@ -1,8 +1,11 @@
 BOT_DIR := services/bot
 AIMATCHER_DIR := services/aimatcher
 COMPOSE := docker compose -f infra/docker-compose.yaml --project-directory .
+POSTGRES_REPLICATION_DIR := infra/postgresql/replication
+POSTGRES_REPLICATION_ENV := $(POSTGRES_REPLICATION_DIR)/.env
+POSTGRES_REPLICATION_COMPOSE := docker compose --env-file $(POSTGRES_REPLICATION_ENV) -f $(POSTGRES_REPLICATION_DIR)/docker-compose.yaml --project-directory $(POSTGRES_REPLICATION_DIR)
 
-.PHONY: help fmt fmt-check vet test build clean db-up db-down db-status db-logs db-shell migrate up stop down ps logs ci
+.PHONY: help fmt fmt-check vet test build clean db-up db-down db-status db-logs db-shell migrate up stop down ps logs ci pgrp-env pgrp-up pgrp-check pgrp-failover pgrp-down
 
 help:
 	@echo "Доступные команды:"
@@ -24,6 +27,10 @@ help:
 	@echo "  make down      - остановка и удаление контейнеров"
 	@echo "  make ps        - статус контейнеров в табличном виде"
 	@echo "  make logs      - логи всех сервисов (follow)"
+	@echo "  make pgrp-up       - поднять учебный стенд PostgreSQL primary/standby"
+	@echo "  make pgrp-check    - проверить WAL streaming и lag"
+	@echo "  make pgrp-failover - проверить ручной promote standby"
+	@echo "  make pgrp-down     - удалить учебный стенд PostgreSQL replication"
 
 fmt:
 	$(MAKE) -C $(BOT_DIR) fmt
@@ -75,6 +82,22 @@ ps:
 
 logs:
 	$(COMPOSE) logs -f
+
+pgrp-env:
+	@test -f $(POSTGRES_REPLICATION_ENV) || cp $(POSTGRES_REPLICATION_DIR)/.env.example $(POSTGRES_REPLICATION_ENV)
+
+pgrp-up: pgrp-env
+	$(POSTGRES_REPLICATION_COMPOSE) up -d
+
+pgrp-check: pgrp-env
+	$(POSTGRES_REPLICATION_DIR)/scripts/check-replication.sh
+	$(POSTGRES_REPLICATION_DIR)/scripts/create-check-row.sh
+
+pgrp-failover: pgrp-env
+	$(POSTGRES_REPLICATION_DIR)/scripts/promote-standby.sh
+
+pgrp-down: pgrp-env
+	$(POSTGRES_REPLICATION_COMPOSE) down -v --remove-orphans
 
 ci:
 	$(MAKE) -C $(BOT_DIR) ci
