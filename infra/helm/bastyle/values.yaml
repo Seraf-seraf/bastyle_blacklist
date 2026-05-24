@@ -45,8 +45,8 @@ configSecret:
 
 rabbitmq:
   enabled: true
+  clusterName: "bastyle-rabbitmq"
+  replicas: 3
   image: "rabbitmq:4.1.1-management"
-  existingSecret: "bastyle-rabbitmq"
-  existingSecretPasswordKey: "password"
   persistence:
-    size: "5Gi"
+    storage: "5Gi"
