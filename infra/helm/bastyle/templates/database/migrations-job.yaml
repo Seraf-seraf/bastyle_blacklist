@@ -6,6 +6,9 @@ metadata:
   labels:
     {{- include "bastyle.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrations
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.migrations.backoffLimit }}
   template:
@@ -25,7 +28,7 @@ spec:
             - -c
           args:
             - >
-              until pg_isready -h {{ include "bastyle.fullname" . }}-postgresql -p 5432 -U {{ .Values.postgresql.user | quote }};
+              until pg_isready -h {{ .Values.postgresql.clusterName }}-rw -p 5432 -U {{ .Values.postgresql.owner | quote }};
               do
                 echo "waiting for postgres...";
                 sleep 2;

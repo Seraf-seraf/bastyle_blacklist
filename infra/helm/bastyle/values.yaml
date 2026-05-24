@@ -1,10 +1,13 @@
 postgresql:
   enabled: true
-  image: "postgres:16-alpine"
+  clusterName: "bastyle-postgresql"
+  instances: 3
+  imageName: "ghcr.io/cloudnative-pg/postgresql:16"
   storageSize: "10Gi"
   database: "bastyle"
-  user: "bastyle"
+  owner: "bastyle"
   existingSecret: "bastyle-postgresql"
+  existingSecretUsernameKey: "username"
   existingSecretPasswordKey: "password"
 
 migrations:
