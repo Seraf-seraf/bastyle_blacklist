@@ -1,0 +1,20 @@
+{{- if .Values.aimatcher.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bastyle.fullname" . }}-aimatcher
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aimatcher
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "bastyle.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: aimatcher
+  ports:
+    - name: http
+      port: {{ .Values.service.aimatcher.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

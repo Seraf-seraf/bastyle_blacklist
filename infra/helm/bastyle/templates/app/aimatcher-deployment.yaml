@@ -1,0 +1,56 @@
+{{- if .Values.aimatcher.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bastyle.fullname" . }}-aimatcher
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aimatcher
+spec:
+  replicas: {{ default 1 .Values.aimatcher.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bastyle.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: aimatcher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "bastyle.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: aimatcher
+    spec:
+      containers:
+        - name: aimatcher
+          image: "{{ .Values.aimatcher.image.repository }}:{{ .Values.aimatcher.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.aimatcher.containerPort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: {{ .Values.aimatcher.configPath }}
+              subPath: {{ .Values.configSecret.configKey }}
+              readOnly: true
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "bastyle.configSecretName" . }}
+{{- end }}

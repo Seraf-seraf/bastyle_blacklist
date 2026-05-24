@@ -1,34 +1,49 @@
-externalDatabase:
-  enabled: true
-  host: ""
-  port: 5432
-  name: "bastyle"
-  user: "bastyle"
-  existingSecret: ""
-  existingSecretPasswordKey: "password"
-  sslmode: "require"
-
 postgresql:
-  enabled: false
+  enabled: true
   image: "postgres:16-alpine"
   storageSize: "10Gi"
   database: "bastyle"
   user: "bastyle"
-  existingSecret: ""
+  existingSecret: "bastyle-postgresql"
   existingSecretPasswordKey: "password"
 
 migrations:
   enabled: true
-  backoffLimit: 3
+  backoffLimit: 0
+  dir: "/app/migrations"
+  image:
+    repository: "bastyle-migrations"
+    tag: "local"
 
 bot:
-  replicaCount: 3
+  replicaCount: 1
   image:
     repository: "bastyle-blacklist"
     tag: "local"
+  containerPort: 8081
+  configPath: "/etc/bastyle/config.yaml"
 
 aimatcher:
   enabled: true
   image:
     repository: "bastyle-aimatcher"
     tag: "local"
+  containerPort: 8080
+  configPath: "/etc/bastyle/config.yaml"
+
+service:
+  type: ClusterIP
+  aimatcher:
+    port: 8080
+
+configSecret:
+  existingSecret: "bastyle-config"
+  configKey: "config.yaml"
+
+rabbitmq:
+  enabled: true
+  image: "rabbitmq:4.1.1-management"
+  existingSecret: "bastyle-rabbitmq"
+  existingSecretPasswordKey: "password"
+  persistence:
+    size: "5Gi"

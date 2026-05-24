@@ -6,7 +6,7 @@ import yaml
 from ai_vector_service.index import HNSWConfig
 
 
-DEFAULT_CONFIG_PATH = Path("infra/config/config.yaml")
+DEFAULT_CONFIG_PATH = Path("/etc/bastyle/config.yaml")
 DEFAULT_MODEL_NAME = "nomic-ai/nomic-embed-vision-v1.5"
 DEFAULT_MODEL_REVISION = "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
 BYTE_UNITS = {

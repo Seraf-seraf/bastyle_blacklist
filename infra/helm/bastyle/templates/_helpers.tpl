@@ -60,3 +60,14 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Return the Kubernetes Secret name that contains full config.yaml.
+*/}}
+{{- define "bastyle.configSecretName" -}}
+{{- if .Values.configSecret.existingSecret -}}
+{{- .Values.configSecret.existingSecret -}}
+{{- else -}}
+{{- printf "%s-config" (include "bastyle.fullname" .) -}}
+{{- end -}}
+{{- end -}}

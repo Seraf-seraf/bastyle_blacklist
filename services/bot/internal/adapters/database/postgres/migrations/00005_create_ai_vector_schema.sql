@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS ai_vector_frame (
 CREATE INDEX IF NOT EXISTS ai_vector_frame_ban_idx
 ON ai_vector_frame(ban_id, frame_index);
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION validate_ai_vector_frame_blob_size()
 RETURNS trigger AS $$
 DECLARE
@@ -60,6 +61,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS ai_vector_frame_blob_size_check ON ai_vector_frame;
 CREATE TRIGGER ai_vector_frame_blob_size_check
