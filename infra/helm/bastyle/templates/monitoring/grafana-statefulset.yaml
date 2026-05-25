@@ -1,0 +1,106 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.grafana.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "bastyle.fullname" . }}-grafana
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  serviceName: {{ include "bastyle.fullname" . }}-grafana
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bastyle.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "bastyle.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: grafana
+    spec:
+      securityContext:
+        fsGroup: 472
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: grafana
+          image: {{ .Values.monitoring.grafana.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsGroup: 472
+            runAsNonRoot: true
+            runAsUser: 472
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.monitoring.grafana.adminUser | quote }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bastyle.grafanaAdminSecretName" . }}
+                  key: {{ .Values.monitoring.grafana.existingSecretPasswordKey }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.monitoring.grafana.containerPort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: storage
+              mountPath: /var/lib/grafana
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+              subPath: datasources.yaml
+              readOnly: true
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards/bastyle-overview.json
+              subPath: bastyle-overview.json
+              readOnly: true
+      volumes:
+        - name: provisioning
+          configMap:
+            name: {{ include "bastyle.fullname" . }}-grafana-provisioning
+        - name: dashboards
+          configMap:
+            name: {{ include "bastyle.fullname" . }}-grafana-dashboards
+{{- if .Values.monitoring.grafana.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: storage
+        labels:
+          {{- include "bastyle.labels" . | nindent 10 }}
+          app.kubernetes.io/component: grafana
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.monitoring.grafana.persistence.storageClassName }}
+        storageClassName: {{ .Values.monitoring.grafana.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.monitoring.grafana.persistence.storageSize | quote }}
+{{- else }}
+        - name: storage
+          emptyDir: {}
+{{- end }}
+{{- end }}

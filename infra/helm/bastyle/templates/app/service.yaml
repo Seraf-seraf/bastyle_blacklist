@@ -1,3 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bastyle.fullname" . }}-bot
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bot
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "bastyle.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: bot
+  ports:
+    - name: http
+      port: {{ .Values.bot.containerPort }}
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.bot.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+---
 {{- if .Values.aimatcher.enabled }}
 apiVersion: v1
 kind: Service
@@ -14,7 +37,7 @@ spec:
     app.kubernetes.io/component: aimatcher
   ports:
     - name: http
-      port: {{ .Values.service.aimatcher.port }}
+      port: {{ .Values.aimatcher.containerPort }}
       targetPort: http
       protocol: TCP
 {{- end }}

@@ -14,6 +14,12 @@ spec:
       app.kubernetes.io/component: bot
   template:
     metadata:
+      {{- if and .Values.monitoring.enabled .Values.monitoring.prometheus.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.bot.metricsPort | quote }}
+        prometheus.io/path: "/metrics"
+      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "bastyle.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
@@ -26,6 +32,9 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.bot.containerPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.bot.metricsPort }}
               protocol: TCP
           args:
             - "-config"

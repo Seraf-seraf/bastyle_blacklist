@@ -71,3 +71,14 @@ Return the Kubernetes Secret name that contains full config.yaml.
 {{- printf "%s-config" (include "bastyle.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the Kubernetes Secret name that contains Grafana admin password.
+*/}}
+{{- define "bastyle.grafanaAdminSecretName" -}}
+{{- if .Values.monitoring.grafana.existingSecret -}}
+{{- .Values.monitoring.grafana.existingSecret -}}
+{{- else -}}
+{{- printf "%s-grafana-admin" (include "bastyle.fullname" .) -}}
+{{- end -}}
+{{- end -}}

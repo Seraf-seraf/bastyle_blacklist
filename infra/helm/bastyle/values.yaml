@@ -24,6 +24,7 @@ bot:
     repository: "bastyle-blacklist"
     tag: "local"
   containerPort: 8081
+  metricsPort: 9090
   configPath: "/etc/bastyle/config.yaml"
 
 aimatcher:
@@ -36,8 +37,6 @@ aimatcher:
 
 service:
   type: ClusterIP
-  aimatcher:
-    port: 8080
 
 configSecret:
   existingSecret: "bastyle-config"
@@ -50,3 +49,43 @@ rabbitmq:
   image: "rabbitmq:4.1.1-management"
   persistence:
     storage: "5Gi"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    image: "prom/prometheus:v2.55.1"
+    scrapeInterval: "15s"
+    retention: "7d"
+    containerPort: 9090
+    persistence:
+      enabled: true
+      storageSize: "5Gi"
+      storageClassName: ""
+  postgresExporter:
+    enabled: true
+    image:
+      repository: "bastyle-postgres-exporter"
+      tag: "local"
+    containerPort: 9187
+  grafana:
+    enabled: true
+    image: "grafana/grafana:11.5.0"
+    containerPort: 3000
+    service:
+      type: NodePort
+      nodePort: 30000
+    adminUser: "admin"
+    existingSecret: "bastyle-grafana-admin"
+    existingSecretPasswordKey: "admin-password"
+    persistence:
+      enabled: true
+      storageSize: "2Gi"
+      storageClassName: ""

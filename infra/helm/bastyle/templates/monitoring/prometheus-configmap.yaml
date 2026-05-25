@@ -1,0 +1,41 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.prometheus.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bastyle.fullname" . }}-prometheus-config
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: {{ .Values.monitoring.prometheus.scrapeInterval | quote }}
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - "127.0.0.1:{{ .Values.monitoring.prometheus.containerPort }}"
+
+      - job_name: bastyle-bot
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "{{ include "bastyle.fullname" . }}-bot:{{ .Values.bot.metricsPort }}"
+{{- if .Values.aimatcher.enabled }}
+
+      - job_name: bastyle-aimatcher
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "{{ include "bastyle.fullname" . }}-aimatcher:{{ .Values.aimatcher.containerPort }}"
+{{- end }}
+{{- if .Values.monitoring.postgresExporter.enabled }}
+
+      - job_name: postgres-exporter
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "{{ include "bastyle.fullname" . }}-postgres-exporter:{{ .Values.monitoring.postgresExporter.containerPort }}"
+{{- end }}
+{{- end }}

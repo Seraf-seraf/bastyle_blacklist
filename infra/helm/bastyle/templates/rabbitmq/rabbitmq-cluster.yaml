@@ -12,4 +12,6 @@ spec:
 
   persistence:
     storage: {{ .Values.rabbitmq.persistence.storage | quote }}
+  resources:
+    {{- toYaml .Values.rabbitmq.resources | nindent 4 }}
 {{- end }}

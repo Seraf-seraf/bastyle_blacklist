@@ -1,0 +1,20 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.postgresExporter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bastyle.fullname" . }}-postgres-exporter
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ include "bastyle.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres-exporter
+  ports:
+    - name: metrics
+      port: {{ .Values.monitoring.postgresExporter.containerPort }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
