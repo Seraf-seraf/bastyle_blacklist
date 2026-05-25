@@ -118,6 +118,7 @@ def test_rabbitmq_consumer_runs_bootstrap_catch_up_before_background_thread(monk
         order.append("run")
 
     monkeypatch.setattr("ai_vector_service.index_events.RabbitMQIndexConsumer.run", fake_run)
+    monkeypatch.setattr("ai_vector_service.index_events.pika", object())
     consumer = _rabbitmq_consumer(synchronizer)
 
     thread = consumer.start_background()
@@ -134,6 +135,7 @@ def test_rabbitmq_consumer_does_not_start_thread_after_bootstrap_error(monkeypat
         raise AssertionError("consumer thread не должен запускаться после ошибки bootstrap")
 
     monkeypatch.setattr("ai_vector_service.index_events.RabbitMQIndexConsumer.run", fake_run)
+    monkeypatch.setattr("ai_vector_service.index_events.pika", object())
     consumer = _rabbitmq_consumer(synchronizer)
 
     try:

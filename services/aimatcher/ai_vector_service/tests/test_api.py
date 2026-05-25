@@ -144,6 +144,42 @@ def test_health_returns_unavailable_when_index_checkpoint_is_stale():
     assert index_health.checks == 1
 
 
+def test_metrics_returns_prometheus_text():
+    client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel())))
+
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "text/plain" in response.headers["content-type"]
+    assert "bastyle_ai_db_errors_total" in response.text
+    assert "bastyle_ai_db_query_duration_seconds" in response.text
+    assert "bastyle_ai_index_stale" in response.text
+    assert "bastyle_ai_http_requests_total" in response.text
+
+
+def test_metrics_records_http_requests_by_route_status_and_latency():
+    database = FakeDatabase()
+    client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel(), database=database)))
+
+    health_response = client.get("/health")
+    embed_response = client.post(
+        "/embed",
+        files=[("files", ("frame.png", png_bytes(), "image/png"))],
+    )
+    missing_response = client.get("/missing")
+    metrics_response = client.get("/metrics")
+
+    assert health_response.status_code == 200
+    assert embed_response.status_code == 200
+    assert missing_response.status_code == 404
+    assert metrics_response.status_code == 200
+    assert 'bastyle_ai_http_requests_total{method="GET",route="/health",status="200"}' in metrics_response.text
+    assert 'bastyle_ai_http_requests_total{method="POST",route="/embed",status="200"}' in metrics_response.text
+    assert 'bastyle_ai_http_requests_total{method="GET",route="unmatched",status="404"}' in metrics_response.text
+    assert 'bastyle_ai_http_requests_total{method="GET",route="/metrics",status="200"}' not in metrics_response.text
+    assert 'bastyle_ai_http_request_duration_seconds_bucket{le="0.005",method="GET",route="/health",status="200"}' in metrics_response.text
+
+
 def test_embed_rejects_invalid_image():
     client = TestClient(create_app(Dependencies(PillowImageDecoder(), FakeModel())))
 

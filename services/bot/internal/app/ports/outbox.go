@@ -45,11 +45,16 @@ type IndexCheckpoint struct {
 	UpdatedAt                time.Time
 }
 
+type IndexCheckpointStat struct {
+	ConsumerID string
+	IndexName  string
+	Stale      bool
+}
+
 const (
 	IndexExact     = "exact"
 	IndexImageHash = "imagehash"
 	IndexVideoLike = "videolike"
-	IndexAIVector  = "ai_vector"
 )
 
 type OutboxWriter interface {
@@ -69,6 +74,7 @@ type IndexCheckpointStore interface {
 	Update(ctx context.Context, consumerID string, indexName string, transactionID string, offset int64) error
 	MarkStale(ctx context.Context, consumerID string, indexName string, reason string) error
 	CheckFresh(ctx context.Context, consumerID string, indexNames []string) error
+	Stats(ctx context.Context, consumerID string, indexNames []string) ([]IndexCheckpointStat, error)
 }
 
 type IndexEventApplier interface {

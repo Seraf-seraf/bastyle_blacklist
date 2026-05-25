@@ -6,6 +6,7 @@ import threading
 
 import numpy as np
 
+from ai_vector_service.metrics import index_rebuild_duration_seconds, index_vectors_total
 from ai_vector_service.storage import IndexState, PostgresVectorStore, VectorBan
 
 
@@ -116,25 +117,32 @@ class FaissHNSWVectorIndex:
             and path.exists()
         ):
             try:
-                return cls.load(
+                loaded = cls.load(
                     path=path,
                     dimension=vector_dim,
                     refs=refs,
                     index_file_sha256=state.index_file_sha256,
                     config=config,
                 )
+                index_vectors_total.labels(model_name=model_name, model_revision=model_revision).set(loaded.vectors_count)
+                return loaded
             except RuntimeError:
                 pass
             except ValueError:
                 pass
 
-        rebuilt = cls.build(dimension=vector_dim, bans=active_bans, config=config)
+        with index_rebuild_duration_seconds.labels(
+            model_name=model_name,
+            model_revision=model_revision,
+        ).time():
+            rebuilt = cls.build(dimension=vector_dim, bans=active_bans, config=config)
         rebuilt.save(
             store=store,
             path=path,
             model_name=model_name,
             model_revision=model_revision,
         )
+        index_vectors_total.labels(model_name=model_name, model_revision=model_revision).set(rebuilt.vectors_count)
         return rebuilt
 
     @classmethod

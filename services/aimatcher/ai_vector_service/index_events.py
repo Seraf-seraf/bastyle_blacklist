@@ -11,6 +11,8 @@ from typing import Protocol
 
 from psycopg.rows import dict_row
 
+from ai_vector_service.metrics import db_errors_total, db_query_duration_seconds, index_stale
+
 try:
     import pika
 except ImportError:  # pragma: no cover - dependency is present in production image
@@ -187,21 +189,36 @@ WHERE consumer_id = %(consumer_id)s
             )
 
     def check_fresh(self, consumer_id: str, index_names: list[str]) -> None:
+        started_at = time.monotonic()
         if not consumer_id:
             raise ValueError("consumer_id обязателен")
         if not index_names:
             return
-        with self._pool.raw.connection() as conn:
-            stale_count = conn.execute(
-                """
-SELECT count(*)
+        try:
+            with self._pool.raw.connection() as conn:
+                conn.row_factory = dict_row
+                rows = conn.execute(
+                    """
+SELECT index_name, stale
 FROM index_checkpoints
-WHERE consumer_id = %s
-  AND index_name = ANY(%s)
-  AND stale = TRUE
+WHERE consumer_id = %(consumer_id)s
+  AND index_name = ANY(%(index_names)s)
 """,
-                (consumer_id, index_names),
-            ).fetchone()[0]
+                    {"consumer_id": consumer_id, "index_names": index_names},
+                ).fetchall()
+        except Exception:
+            db_errors_total.labels(operation="index_checkpoint_check_fresh").inc()
+            raise
+        finally:
+            db_query_duration_seconds.labels(operation="index_checkpoint_check_fresh").observe(time.monotonic() - started_at)
+
+        stale_by_name = {str(row["index_name"]): bool(row["stale"]) for row in rows}
+        stale_count = 0
+        for index_name in index_names:
+            is_stale = stale_by_name.get(index_name, False)
+            if is_stale:
+                stale_count += 1
+            index_stale.labels(index_name=index_name, consumer_id=consumer_id).set(1 if is_stale else 0)
         if stale_count:
             raise RuntimeError("найдены stale index checkpoints")
 

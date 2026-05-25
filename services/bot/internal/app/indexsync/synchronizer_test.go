@@ -209,6 +209,22 @@ func (s *fakeCheckpointStore) CheckFresh(context.Context, string, []string) erro
 	return nil
 }
 
+func (s *fakeCheckpointStore) Stats(_ context.Context, consumerID string, indexNames []string) ([]ports.IndexCheckpointStat, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stats := make([]ports.IndexCheckpointStat, 0, len(indexNames))
+	for _, indexName := range indexNames {
+		checkpoint := s.items[checkpointKey{consumerID: consumerID, indexName: indexName}]
+		stats = append(stats, ports.IndexCheckpointStat{
+			ConsumerID: consumerID,
+			IndexName:  indexName,
+			Stale:      checkpoint.Stale,
+		})
+	}
+	return stats, nil
+}
+
 type fakeApplier struct {
 	indexName      string
 	supported      string

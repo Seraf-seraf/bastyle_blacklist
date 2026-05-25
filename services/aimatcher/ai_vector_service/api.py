@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 import threading
+from time import monotonic
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from ai_vector_service.images import ImageDecodeError, ImageDecoder
 from ai_vector_service.index import FaissHNSWVectorIndex, HNSWConfig
+from ai_vector_service.metrics import metrics_response, observe_http_request
 from ai_vector_service.model import ImageEmbeddingModel
 from ai_vector_service.storage import InsertBanResult, PostgresVectorStore, VectorFrame
 
@@ -232,6 +234,17 @@ def create_app(
     limits = limits or UploadLimits()
     app = FastAPI(title="Bastyle AI Vector Service", lifespan=lifespan)
 
+    @app.middleware("http")
+    async def record_http_metrics(request: Request, call_next):
+        started_at = monotonic()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        finally:
+            observe_http_request(request, status_code, monotonic() - started_at)
+
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         if dependencies.database is None:
@@ -248,6 +261,10 @@ def create_app(
                 raise HTTPException(status_code=503, detail="Индексы требуют пересинхронизации") from err
 
         return HealthResponse(status="ok", model_name=dependencies.model.model_name)
+
+    @app.get("/metrics")
+    def metrics():
+        return metrics_response()
 
     @app.post("/embed", response_model=EmbedResponse)
     async def embed(

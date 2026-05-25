@@ -127,6 +127,58 @@ func (s *store) CheckFresh(ctx context.Context, consumerID string, indexNames []
 	return nil
 }
 
+func (s *store) Stats(ctx context.Context, consumerID string, indexNames []string) ([]ports.IndexCheckpointStat, error) {
+	const methodCtx = "indexcheckpoint/postgres/Store.Stats"
+
+	if consumerID == "" {
+		return nil, apperrors.New(methodCtx, "consumer_id обязателен")
+	}
+	if len(indexNames) == 0 {
+		return nil, nil
+	}
+	if s.pool == nil {
+		return nil, apperrors.New(methodCtx, "PostgreSQL pool не настроен")
+	}
+
+	rows, err := s.pool.Query(ctx, `
+SELECT consumer_id, index_name, stale
+FROM index_checkpoints
+WHERE consumer_id = $1
+  AND index_name = ANY($2)
+ORDER BY index_name
+`, consumerID, indexNames)
+	if err != nil {
+		return nil, apperrors.Wrap(methodCtx, err)
+	}
+	defer rows.Close()
+
+	statsByName := make(map[string]ports.IndexCheckpointStat, len(indexNames))
+	for _, indexName := range indexNames {
+		statsByName[indexName] = ports.IndexCheckpointStat{
+			ConsumerID: consumerID,
+			IndexName:  indexName,
+			Stale:      false,
+		}
+	}
+
+	for rows.Next() {
+		var stat ports.IndexCheckpointStat
+		if err := rows.Scan(&stat.ConsumerID, &stat.IndexName, &stat.Stale); err != nil {
+			return nil, apperrors.Wrap(methodCtx, err)
+		}
+		statsByName[stat.IndexName] = stat
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.Wrap(methodCtx, err)
+	}
+
+	stats := make([]ports.IndexCheckpointStat, 0, len(indexNames))
+	for _, indexName := range indexNames {
+		stats = append(stats, statsByName[indexName])
+	}
+	return stats, nil
+}
+
 func updateCheckpointSQL() string {
 	return `
 UPDATE index_checkpoints
