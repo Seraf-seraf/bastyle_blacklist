@@ -1,6 +1,6 @@
 # Bastyle Blacklist
 
-Версия: `v1.2.1`
+Версия: `v2.0.0`
 
 `Bastyle Blacklist` - Telegram-бот для автоматической модерации медиа в
 групповых чатах. Бот помогает администраторам один раз заблокировать нежеланный
@@ -22,7 +22,7 @@
 5. При повторной отправке совпадающего контента бот удаляет сообщение
    автоматически.
 
-## Возможности `v1.2.1`
+## Возможности `v2.0.0`
 
 - exact-совпадение по Telegram `file_unique_id`;
 - perceptual hash matching для фото и статичных стикеров;
@@ -42,7 +42,7 @@
 
 ## Архитектура
 
-Текущий runtime `v1.2.1` использует Docker Compose, Go Telegram bot, отдельный
+Текущий runtime `v2.0.0` использует Docker Compose, Go Telegram bot, отдельный
 Python/FastAPI AI matcher, PostgreSQL как основное хранилище и RabbitMQ как
 канал сигналов для обновления производных индексов. Полная архитектура
 масштабирования зафиксирована в [docs/README.md](docs/README.md).
@@ -188,7 +188,7 @@ jobs_buffer: 100
 
 health:
   enabled: true
-  host: "127.0.0.1"
+  host: "0.0.0.0"
   port: 8081
 
 database:
@@ -202,6 +202,43 @@ database:
   statement_timeout: 10s
   migration:
     enabled: true
+
+rabbitmq:
+  url: "amqp://guest:guest@bastyle-rabbitmq:5672/"
+  exchange: "bastyle.events"
+  exchange_type: "topic"
+  publish_timeout: 5s
+  reconnect_interval: 5s
+
+outbox_publisher:
+  enabled: true
+  instance_id: ""
+  batch_size: 50
+  poll_interval: 1s
+  idle_interval: 5s
+  lock_ttl: 30s
+  retry_base_delay: 5s
+  retry_max_delay: 10m
+  max_attempts: 20
+
+consumers:
+  index_events:
+    enabled: false
+    replica_id: ""
+    queue_template: "bastyle.replica.%s.events"
+    routing_keys:
+      - "media.ban.#"
+      - "index.#"
+    prefetch: 10
+    retry_delay: 5s
+    catch_up_interval: 5s
+    catch_up_batch_size: 100
+
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9090
+  path: "/metrics"
 
 media_config:
   max_animation_duration: 10s
@@ -263,12 +300,24 @@ matching:
 `jobs_buffer` - размер очереди сообщений.
 `health.enabled` - включает HTTP health endpoint.
 `health.host` и `health.port` - host/port для health endpoint.
+`metrics.enabled` - включает HTTP endpoint Prometheus metrics.
+`metrics.host`, `metrics.port` и `metrics.path` - host, port и path metrics
+endpoint.
 `database.dsn` - PostgreSQL DSN для Go-бота и AI-сервиса.
 `database.max_conns` и `min_conns` - лимиты пула соединений PostgreSQL.
 `database.max_conn_lifetime`, `max_conn_idle_time`, `health_check_period`,
 `connect_timeout` и `statement_timeout` - таймауты PostgreSQL client/pool.
 `database.migration.enabled` - включает запуск миграций там, где это явно
 поддержано инфраструктурой.
+`rabbitmq.url` - URL RabbitMQ для публикации исходящих событий и потребления
+сигналов обновления индексов.
+`rabbitmq.exchange` и `exchange_type` - exchange и тип exchange для событий.
+`rabbitmq.publish_timeout` и `reconnect_interval` - таймаут публикации и
+интервал повторного подключения.
+`outbox_publisher.*` - настройки пересылки Watermill outbox из PostgreSQL в
+RabbitMQ.
+`consumers.index_events.*` - настройки догоняющей синхронизации локальных
+индексов по сигналам RabbitMQ и журналу outbox PostgreSQL.
 
 `matching.exact.buffer` - стартовый размер черного списка по `file_unique_id` в памяти приложения.
 `matching.image_hash.threshold` - максимальная Hamming distance для похожих изображений.
@@ -306,7 +355,7 @@ go -C services/bot run ./cmd/main.go -config ../../infra/config/config.yaml
 Сборка:
 
 ```bash
-docker build -f infra/docker/Dockerfile.bot -t bastyle-blacklist:1.2.0 .
+docker build -f infra/docker/Dockerfile.bot -t bastyle-blacklist:local .
 ```
 
 Запуск:
@@ -317,7 +366,7 @@ docker run --rm \
   --memory-swap 512m \
   -v "$PWD/infra/config/config.yaml:/etc/bastyle/config.yaml:ro" \
   -v bastyle-data:/var/lib/bastyle \
-  bastyle-blacklist:1.2.0
+  bastyle-blacklist:local
 ```
 
 Для Docker укажите PostgreSQL DSN в config. Локальный volume `/var/lib/bastyle`
@@ -347,10 +396,22 @@ make up
 make down
 ```
 
-Compose монтирует config в `/etc/bastyle/config.yaml` для Go-бота, в
-`/app/infra/config/config.yaml` для AI-сервиса и общий volume `/var/lib/bastyle` для
-Faiss index и runtime-данных. Контейнер Go-бота ограничен `512m`
+Compose монтирует config в `/etc/bastyle/config.yaml` для Go-бота и
+AI-сервиса. Go-бот использует volume `bastyle-blacklist-data`, AI-сервис -
+`bastyle-aimatcher-data`; оба volume смонтированы в `/var/lib/bastyle` для
+FAISS index и runtime-данных. Контейнер Go-бота ограничен `512m`
 памяти, контейнер `bastyle-aimatcher` - `2g`.
+
+Compose также поднимает одноразовый service миграций PostgreSQL,
+postgres-exporter, Prometheus и Grafana. Grafana доступна только с localhost:
+
+```bash
+open http://127.0.0.1:3000
+```
+
+Локальные учетные данные Grafana по умолчанию: `admin` / `admin`. Для переопределения
+используйте переменные окружения `GRAFANA_ADMIN_USER` и
+`GRAFANA_ADMIN_PASSWORD`. Prometheus доступен на `http://127.0.0.1:9090`.
 
 `bastyle-aimatcher` - внутренний сервис. Его HTTP endpoint должен быть доступен
 только Go-боту внутри приватной сети Compose/Kubernetes и не должен
@@ -358,7 +419,8 @@ Faiss index и runtime-данных. Контейнер Go-бота ограни
 
 ## Kubernetes
 
-Используется один Helm values-файл: `infra/helm/bastyle/values.yaml`.
+Используется Helm chart `infra/helm/bastyle` с `version: 2.0.0`,
+`appVersion: "2.0.0"` и один values-файл: `infra/helm/bastyle/values.yaml`.
 
 Перед установкой проверьте значения:
 
@@ -369,20 +431,28 @@ Faiss index и runtime-данных. Контейнер Go-бота ограни
 - `postgresql.*`;
 - `rabbitmq.*`.
 
+По текущим шаблонам chart рендерит `postgresql.cnpg.io/v1` `Cluster`,
+`rabbitmq.com/v1beta1` `RabbitmqCluster`, `VaultAuth`, `VaultDynamicSecret`,
+`VaultStaticSecret`, `Deployment` Go-бота, `Deployment` AI matcher,
+`Job` миграций и ресурсы наблюдаемости. До установки приложения в кластере
+должны быть доступны CRD CloudNativePG, RabbitMQ Cluster Operator и Vault
+Secrets Operator.
+
 ```bash
 make install-platform
 ```
 
-Эта команда устанавливает HashiCorp Vault и Vault Secrets Operator. Helm chart
-приложения использует ресурсы оператора `VaultAuth`, `VaultDynamicSecret` и
-`VaultStaticSecret`, поэтому устанавливать приложение до появления CRD нельзя.
-Если запустить `helm upgrade --install bastyle infra/helm/bastyle/` напрямую,
-Helm завершится ошибкой вида `no matches for kind "VaultAuth" in version
-"secrets.hashicorp.com/v1beta1"`.
+Эта команда устанавливает HashiCorp Vault и Vault Secrets Operator. Установку
+CloudNativePG operator и RabbitMQ Cluster Operator выполняйте отдельно по
+принятому в кластере процессу. Если запустить
+`helm upgrade --install bastyle infra/helm/bastyle/` до появления нужных CRD,
+Helm завершится ошибкой вида `no matches for kind ...`.
 
-Проверьте, что CRD оператора зарегистрированы:
+Проверьте, что CRD операторов зарегистрированы:
 
 ```bash
+kubectl get crd clusters.postgresql.cnpg.io
+kubectl get crd rabbitmqclusters.rabbitmq.com
 kubectl get crd vaultauths.secrets.hashicorp.com \
   vaultdynamicsecrets.secrets.hashicorp.com \
   vaultstaticsecrets.secrets.hashicorp.com
@@ -426,6 +496,23 @@ make bootstrap-vault
 make install-app
 ```
 
+При `bot.runtimeSecrets.enabled: true` Go-бот получает `config.yaml` из
+ConfigMap, а секретные значения `database.dsn`, `rabbitmq.url` и
+`telegram.token` - из Kubernetes Secrets, созданных Vault Secrets Operator, через
+env-переменные `BASTYLE_DATABASE_DSN`, `BASTYLE_RABBITMQ_URL` и
+`BASTYLE_TELEGRAM_TOKEN`.
+
+Текущий chart также ссылается на существующие Kubernetes Secrets:
+
+- `postgresql.existingSecret` для bootstrap CloudNativePG;
+- `configSecret.existingSecret` с ключом `config.yaml` для AI matcher,
+  migration job и postgres-exporter;
+- `monitoring.grafana.existingSecret` для пароля администратора Grafana.
+
+Эти Secret должны быть подготовлены вне репозитория. Не коммитьте
+производственные значения Telegram token, PostgreSQL DSN, RabbitMQ URL или
+пароли.
+
 Проверка:
 
 ```bash
@@ -436,8 +523,8 @@ kubectl port-forward -n bastyle deploy/bastyle-bot 18081:8081
 curl -fsS http://127.0.0.1:18081/health
 ```
 
-Секреты в Kubernetes создает Vault Secrets Operator. Не создавайте runtime
-Secret вручную.
+Runtime Secret для Go-бота создает Vault Secrets Operator. Не создавайте эти
+runtime Secret вручную.
 
 ## Systemd
 
@@ -503,6 +590,12 @@ Unit запускает бот от пользователя `bastyle_bot`, хр
 
 Если `/ban` отправил не администратор, бот не добавит контент в blacklist.
 
-## Что изменилось в `v1.2.1`
+## Что входит в `v2.0.0`
 
-- (fix) exact matcher сохраняет состояние и восстановливает его после перезагрузки приложения
+- PostgreSQL является обязательным source of truth для ban-записей,
+  артефактов сопоставителей, ИИ-векторов, outbox и checkpoint-ов индексов.
+- RabbitMQ используется как канал сигналов для обновления производных
+  локальных индексов.
+- Go-бот и AI matcher отдают `/health` и `/metrics`.
+- Helm chart содержит развертывание Go-бота, AI matcher, PostgreSQL,
+  RabbitMQ, migration job и наблюдаемости.

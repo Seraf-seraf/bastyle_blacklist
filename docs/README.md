@@ -1,5 +1,7 @@
 # Архитектура Bastyle Blacklist
 
+Версия архитектуры: `v2.0.0`
+
 Документ фиксирует архитектуру приложения, текущие границы модулей и
 архитектурные ограничения масштабирования после перехода с локального SQLite на
 PostgreSQL.
@@ -476,13 +478,55 @@ HTTP-эндпоинты:
 - `bastyle-aimatcher`;
 - `bastyle-postgresql`;
 - `bastyle-rabbitmq`;
-- общий том `bastyle-data` для артефактов времени выполнения, например индекса
+- одноразовый `bastyle-migrations` для применения PostgreSQL migrations;
+- `bastyle-postgres-exporter`;
+- `bastyle-prometheus`;
+- `bastyle-grafana`;
+- том `bastyle-blacklist-data` для runtime-данных Go-бота;
+- том `bastyle-aimatcher-data` для runtime-данных AI matcher, например индекса
   FAISS;
 - том PostgreSQL;
-- том RabbitMQ.
+- том RabbitMQ;
+- том Prometheus;
+- том Grafana.
 
-Миграции PostgreSQL запускаются отдельными Makefile-командами и читают DSN из
-YAML-конфига через `infra/scripts/database-dsn.sh`.
+В Compose Go-бот получает локальные env overrides для PostgreSQL и RabbitMQ,
+чтобы не зависеть от Kubernetes DNS/credentials в локальном `config.yaml`.
+PostgreSQL service также имеет alias `bastyle-postgresql-rw`, а RabbitMQ -
+alias `bastyle-rabbitmq.default.svc`, чтобы локальный контур мог запускаться с
+конфигом, близким к Kubernetes.
+
+Миграции PostgreSQL в Compose выполняет `bastyle-migrations`; Makefile-команды
+миграций остаются доступными для ручного запуска и читают DSN из YAML-конфига
+через `infra/scripts/database-dsn.sh`.
+
+### Kubernetes Helm
+
+`infra/helm/bastyle` - текущий Helm chart приложения. В `Chart.yaml`
+зафиксированы `version: 2.0.0` и `appVersion: "2.0.0"`.
+
+Chart рендерит:
+
+- `Deployment` Go-бота;
+- `Deployment` AI matcher;
+- `postgresql.cnpg.io/v1` `Cluster`;
+- `rabbitmq.com/v1beta1` `RabbitmqCluster`;
+- отдельный `Job` миграций PostgreSQL;
+- Prometheus, Grafana и postgres-exporter для наблюдаемости;
+- ресурсы Vault Secrets Operator: `VaultAuth`, `VaultDynamicSecret` и
+  `VaultStaticSecret`.
+
+При `bot.runtimeSecrets.enabled=true` Go-бот получает `config.yaml` из
+ConfigMap, построенного из `infra/helm/bastyle/config/config.yaml`, а секретные
+значения `database.dsn`, `rabbitmq.url` и `telegram.token` подставляются через
+env-переменные `BASTYLE_DATABASE_DSN`, `BASTYLE_RABBITMQ_URL` и
+`BASTYLE_TELEGRAM_TOKEN`.
+
+AI matcher, migration job и postgres-exporter в текущем chart используют
+существующий Secret `configSecret.existingSecret` с ключом `config.yaml`.
+CloudNativePG также ссылается на `postgresql.existingSecret`, а Grafana - на
+`monitoring.grafana.existingSecret`. Эти Secret являются внешними входами
+развертывания и не должны храниться в репозитории с промышленными значениями.
 
 ### Systemd
 
