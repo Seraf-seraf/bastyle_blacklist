@@ -26,7 +26,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 type fakeMatcher struct {
@@ -642,7 +641,7 @@ func newFunctionalPostgresPool(t *testing.T, ctx context.Context) *postgres.Pool
 		tcpostgres.WithDatabase("bastyle"),
 		tcpostgres.WithUsername("bastyle"),
 		tcpostgres.WithPassword("bastyle"),
-		testcontainers.WithWaitStrategy(wait.ForListeningPort("5432/tcp").WithStartupTimeout(30*time.Second)),
+		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {
 		t.Fatal(err)
