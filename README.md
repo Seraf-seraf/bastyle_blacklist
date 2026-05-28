@@ -94,6 +94,8 @@ services/
 infra/
   config/     application configs
   docker/     service Dockerfiles
+  helm/       Kubernetes Helm charts and platform values
+  scripts/    Kubernetes/Vault install scripts
   bin/        local build artifacts
   systemd/    systemd unit files
 ```
@@ -353,6 +355,68 @@ Faiss index и runtime-данных. Контейнер Go-бота ограни
 `bastyle-aimatcher` - внутренний сервис. Его HTTP endpoint должен быть доступен
 только Go-боту внутри приватной сети Compose/Kubernetes и не должен
 публиковаться наружу через public ports, ingress или gateway.
+
+## Kubernetes
+
+Используется один Helm values-файл: `infra/helm/bastyle/values.yaml`.
+
+Перед установкой проверьте значения:
+
+- `bot.image.repository` и `bot.image.tag`;
+- `aimatcher.image.repository` и `aimatcher.image.tag`;
+- `vault.*`;
+- `bot.runtimeSecrets.*`;
+- `postgresql.*`;
+- `rabbitmq.*`.
+
+```bash
+make install-platform
+```
+
+Инициализируйте и распечатайте Vault:
+
+```bash
+kubectl exec -n vault vault-0 -- vault operator init
+kubectl exec -n vault vault-0 -- vault operator unseal
+```
+
+Для HA Vault выполните `unseal` для каждого Vault pod.
+
+Откройте доступ к Vault API:
+
+```bash
+kubectl port-forward -n vault svc/vault 8200:8200
+```
+
+В другом терминале задайте переменные:
+
+```bash
+export VAULT_ADDR="http://127.0.0.1:8200"
+export VAULT_TOKEN="<vault-token>"
+export TELEGRAM_TOKEN="<telegram-token>"
+export POSTGRES_ADMIN_PASSWORD="<postgres-admin-password>"
+export RABBITMQ_ADMIN_PASSWORD="<rabbitmq-admin-password>"
+```
+
+Настройте Vault и установите приложение:
+
+```bash
+make bootstrap-vault
+make install-app
+```
+
+Проверка:
+
+```bash
+kubectl get vaultauth,vaultdynamicsecret,vaultstaticsecret -n bastyle
+kubectl get secret bastyle-postgres-runtime bastyle-rabbitmq-runtime bastyle-telegram-runtime -n bastyle
+kubectl rollout status deployment/bastyle-bot -n bastyle
+kubectl port-forward -n bastyle deploy/bastyle-bot 18081:8081
+curl -fsS http://127.0.0.1:18081/health
+```
+
+Секреты в Kubernetes создает Vault Secrets Operator. Не создавайте runtime
+Secret вручную.
 
 ## Systemd
 

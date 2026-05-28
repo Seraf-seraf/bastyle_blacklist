@@ -1,9 +1,6 @@
 # PostgreSQL Replication
 
-Документ описывает локальный стенд ручной PostgreSQL physical streaming
-replication для проверки этапа масштабирования.
-
-Стенд нужен разработчику, чтобы быстро проверить:
+Локальный контур ручной PostgreSQL physical streaming replication проверяет:
 
 - primary принимает записи;
 - standby получает WAL в async-режиме;
@@ -11,13 +8,7 @@ replication для проверки этапа масштабирования.
 - WAL archive включен;
 - standby можно вручную promoted и после promote он принимает записи.
 
-Это не production-манифест. Production-настройки секретов, backup storage,
-DNS/endpoint switching и мониторинг должны оформляться отдельно для конкретной
-инфраструктуры.
-
-## Архитектурное Решение
-
-Выбран вариант: ручная PostgreSQL physical streaming replication.
+Это не Kubernetes-манифест.
 
 Правила для приложения:
 
@@ -54,19 +45,27 @@ infra/postgresql/replication/
 
 ## Команды
 
-Поднять стенд:
+Подготовить окружение:
 
 ```bash
-make pgrp-up
+test -f infra/postgresql/replication/.env || cp infra/postgresql/replication/.env.example infra/postgresql/replication/.env
 ```
 
-Команда создаст `infra/postgresql/replication/.env` из `.env.example`, если
-локального файла еще нет.
+Поднять PostgreSQL primary/standby:
+
+```bash
+docker compose \
+  --env-file infra/postgresql/replication/.env \
+  -f infra/postgresql/replication/docker-compose.yaml \
+  --project-directory infra/postgresql/replication \
+  up -d
+```
 
 Проверить replication:
 
 ```bash
-make pgrp-check
+infra/postgresql/replication/scripts/check-replication.sh
+infra/postgresql/replication/scripts/create-check-row.sh
 ```
 
 Проверка выполняет:
@@ -80,21 +79,25 @@ make pgrp-check
 Проверить ручной failover:
 
 ```bash
-make pgrp-failover
+infra/postgresql/replication/scripts/promote-standby.sh
 ```
 
 Проверка останавливает primary, выполняет `pg_ctl promote` на standby и
 проверяет, что promoted standby больше не в recovery и принимает запись.
 
-Остановить стенд и удалить volumes:
+Остановить контур и удалить volumes:
 
 ```bash
-make pgrp-down
+docker compose \
+  --env-file infra/postgresql/replication/.env \
+  -f infra/postgresql/replication/docker-compose.yaml \
+  --project-directory infra/postgresql/replication \
+  down -v --remove-orphans
 ```
 
-## Ожидаемый Результат
+## Результат
 
-`make pgrp-check` должен показать:
+Проверка replication должна показать:
 
 - `state = streaming`;
 - `sync_state = async`;
@@ -103,11 +106,10 @@ make pgrp-down
 - количество файлов в WAL archive больше нуля после `pg_switch_wal()`;
 - контрольная строка доступна на standby.
 
-`make pgrp-failover` должен показать:
+Проверка failover должна показать:
 
 - `pg_is_in_recovery = false` после promote;
 - запись в promoted standby проходит успешно.
 
 После failover-теста старый primary нельзя возвращать в кластер как primary.
-Для нового цикла проверки нужно выполнить `make pgrp-down`, затем
-`make pgrp-up`.
+Для нового цикла проверки нужно удалить volumes и поднять контур заново.

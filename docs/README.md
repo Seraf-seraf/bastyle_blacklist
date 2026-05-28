@@ -27,7 +27,7 @@ Bastyle Blacklist - Telegram-бот для автоматической моде
 сопоставителей, ИИ-векторных данных, журнала исходящих событий Watermill и
 контрольных точек индексов. Локальные Go-индексы exact/imagehash/videolike и
 локальный индекс FAISS остаются производными проекциями времени выполнения.
-Локальный стенд PostgreSQL replication описан в
+Локальный контур PostgreSQL replication описан в
 [postgresql-replication.md](postgresql-replication.md).
 
 Важно отделять текущий код от инфраструктурной целевой схемы:
