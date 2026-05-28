@@ -54,15 +54,37 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "bastyle.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "bastyle.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
+{{- $serviceAccount := default dict .Values.serviceAccount -}}
+{{- default (include "bastyle.fullname" .) $serviceAccount.name }}
 {{- end }}
 
 {{/*
-Return the Kubernetes Secret name that contains full config.yaml.
+Return the Kubernetes ConfigMap name that contains bot config.yaml.
+*/}}
+{{- define "bastyle.botConfigMapName" -}}
+{{- printf "%s-bot-config" (include "bastyle.fullname" .) -}}
+{{- end -}}
+
+{{/*
+Return "true" when bot uses runtime secrets from Vault/VSO.
+*/}}
+{{- define "bastyle.botRuntimeSecretsEnabled" -}}
+{{- $bot := default dict .Values.bot -}}
+{{- $runtimeSecrets := default dict $bot.runtimeSecrets -}}
+{{- if (default false $runtimeSecrets.enabled) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Return "true" when legacy ExternalSecret config is configured in current release values.
+*/}}
+{{- define "bastyle.legacyExternalConfigEnabled" -}}
+{{- $externalSecrets := default dict .Values.externalSecrets -}}
+{{- $fake := default dict $externalSecrets.fake -}}
+{{- if and (not (include "bastyle.botRuntimeSecretsEnabled" .)) (default "" $fake.configYaml) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Return the Kubernetes Secret name that contains full config.yaml for legacy components.
 */}}
 {{- define "bastyle.configSecretName" -}}
 {{- if .Values.configSecret.existingSecret -}}

@@ -1,0 +1,11 @@
+{{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bastyle.botConfigMapName" . }}
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bot
+data:
+  config.yaml: {{ .Files.Get "config/config.yaml" | quote }}
+{{- end }}

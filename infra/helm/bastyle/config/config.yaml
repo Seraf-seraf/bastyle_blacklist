@@ -1,0 +1,107 @@
+telegram:
+  token: ""
+  update_timeout_seconds: 5
+  http_client:
+    enabled: false
+    proxy_url: ""
+
+workers: 5
+jobs_buffer: 100
+
+health:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8081
+
+database:
+  dsn: ""
+  max_conns: 10
+  min_conns: 1
+  max_conn_lifetime: 1h
+  max_conn_idle_time: 15m
+  health_check_period: 30s
+  connect_timeout: 5s
+  statement_timeout: 10s
+  migration:
+    enabled: false
+
+rabbitmq:
+  url: ""
+  exchange: "bastyle.events"
+  exchange_type: "topic"
+  publish_timeout: 5s
+  reconnect_interval: 5s
+
+outbox_publisher:
+  enabled: true
+  instance_id: ""
+  batch_size: 50
+  poll_interval: 1s
+  idle_interval: 5s
+  lock_ttl: 30s
+  retry_base_delay: 5s
+  retry_max_delay: 10m
+  max_attempts: 20
+
+consumers:
+  index_events:
+    enabled: false
+    replica_id: ""
+    queue_template: "bastyle.replica.%s.events"
+    routing_keys:
+      - "media.ban.#"
+      - "index.#"
+    prefetch: 10
+    retry_delay: 5s
+    catch_up_interval: 5s
+    catch_up_batch_size: 100
+
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9090
+  path: "/metrics"
+
+media_config:
+  max_animation_duration: 10s
+  max_video_sticker_duration: 3s
+  max_animation_size: 20MiB
+  max_video_sticker_size: 256KiB
+  max_frames: 10
+  target_width: 320
+  target_height: 320
+  max_upload_bytes: 20MiB
+  max_image_pixels: 16777216
+  ffmpeg_binary: ffmpeg
+  ffmpeg_timeout: 10s
+
+matching:
+  exact:
+    buffer: 500
+  image_hash:
+    threshold: 12
+    buffer: 500
+  video_like:
+    threshold: 12
+    buffer: 500
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
+  ai_vector:
+    enabled: false
+    model_name: "nomic-ai/nomic-embed-vision-v1.5"
+    model_revision: "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
+    device: "cpu"
+    index_path: "faiss-image.index"
+    max_files: 10
+    threshold: 0.92
+    top_k: 5
+    min_matched_frames: 2
+    min_matched_ratio: 0.4
+    request_timeout: 10s
+    service:
+      host: "bastyle-aimatcher"
+      port: 8080
+    hnsw:
+      m: 32
+      ef_construction: 80
+      ef_search: 64

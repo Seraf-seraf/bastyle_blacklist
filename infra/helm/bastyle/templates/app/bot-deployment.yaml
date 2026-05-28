@@ -25,6 +25,7 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: bot
     spec:
+      serviceAccountName: {{ include "bastyle.serviceAccountName" . }}
       containers:
         - name: bot
           image: "{{ .Values.bot.image.repository }}:{{ .Values.bot.image.tag }}"
@@ -39,6 +40,24 @@ spec:
           args:
             - "-config"
             - "{{ .Values.bot.configPath }}"
+          {{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+          env:
+            - name: BASTYLE_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.database.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.database.key | quote }}
+            - name: BASTYLE_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.rabbitmq.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.rabbitmq.key | quote }}
+            - name: BASTYLE_TELEGRAM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.telegram.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.telegram.key | quote }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /health
@@ -62,5 +81,10 @@ spec:
               readOnly: true
       volumes:
         - name: config
+          {{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+          configMap:
+            name: {{ include "bastyle.botConfigMapName" . }}
+          {{- else }}
           secret:
             secretName: {{ include "bastyle.configSecretName" . }}
+          {{- end }}

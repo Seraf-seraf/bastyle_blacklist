@@ -1,11 +1,8 @@
 BOT_DIR := services/bot
 AIMATCHER_DIR := services/aimatcher
 COMPOSE := docker compose -f infra/docker-compose.yaml --project-directory .
-POSTGRES_REPLICATION_DIR := infra/postgresql/replication
-POSTGRES_REPLICATION_ENV := $(POSTGRES_REPLICATION_DIR)/.env
-POSTGRES_REPLICATION_COMPOSE := docker compose --env-file $(POSTGRES_REPLICATION_ENV) -f $(POSTGRES_REPLICATION_DIR)/docker-compose.yaml --project-directory $(POSTGRES_REPLICATION_DIR)
 
-.PHONY: help fmt fmt-check vet test build clean db-up db-down db-status db-logs db-shell migrate up stop down ps logs ci docker-build-bot docker-build-aimatcher docker-build-postgres-exporter pgrp-env pgrp-up pgrp-check pgrp-failover pgrp-down
+.PHONY: help fmt fmt-check vet test build clean db-up db-down db-status db-logs db-shell migrate up stop down ps logs ci docker-build-bot docker-build-aimatcher docker-build-postgres-exporter install-platform bootstrap-vault install-app
 
 help:
 	@echo "Доступные команды:"
@@ -30,10 +27,9 @@ help:
 	@echo "  make docker-build-bot - собрать локальный образ Go-бота"
 	@echo "  make docker-build-aimatcher - собрать локальный образ AI matcher"
 	@echo "  make docker-build-postgres-exporter - собрать локальный образ PostgreSQL exporter"
-	@echo "  make pgrp-up       - поднять учебный стенд PostgreSQL primary/standby"
-	@echo "  make pgrp-check    - проверить WAL streaming и lag"
-	@echo "  make pgrp-failover - проверить ручной promote standby"
-	@echo "  make pgrp-down     - удалить учебный стенд PostgreSQL replication"
+	@echo "  make install-platform - установить Vault и Vault Secrets Operator в Kubernetes"
+	@echo "  make bootstrap-vault - настроить Vault engines, policy и Kubernetes auth"
+	@echo "  make install-app - установить Helm chart приложения в Kubernetes"
 
 fmt:
 	$(MAKE) -C $(BOT_DIR) fmt
@@ -95,21 +91,14 @@ docker-build-aimatcher:
 docker-build-postgres-exporter:
 	docker build -f infra/docker/Dockerfile.postgres-exporter -t bastyle-postgres-exporter:local .
 
-pgrp-env:
-	@test -f $(POSTGRES_REPLICATION_ENV) || cp $(POSTGRES_REPLICATION_DIR)/.env.example $(POSTGRES_REPLICATION_ENV)
+install-platform:
+	infra/scripts/install-platform.sh
 
-pgrp-up: pgrp-env
-	$(POSTGRES_REPLICATION_COMPOSE) up -d
+bootstrap-vault:
+	infra/scripts/bootstrap-vault.sh
 
-pgrp-check: pgrp-env
-	$(POSTGRES_REPLICATION_DIR)/scripts/check-replication.sh
-	$(POSTGRES_REPLICATION_DIR)/scripts/create-check-row.sh
-
-pgrp-failover: pgrp-env
-	$(POSTGRES_REPLICATION_DIR)/scripts/promote-standby.sh
-
-pgrp-down: pgrp-env
-	$(POSTGRES_REPLICATION_COMPOSE) down -v --remove-orphans
+install-app:
+	infra/scripts/install-app.sh
 
 ci:
 	$(MAKE) -C $(BOT_DIR) ci
