@@ -14,4 +14,4 @@ __pycache__/
 .pytest_cache/
 .venv/
 AGENTS.md
-config.yaml
+infra/config/config.yaml
