@@ -429,6 +429,68 @@ telegram:
 	}
 }
 
+func TestLoadAppliesSecretEnvOverrides(t *testing.T) {
+	t.Setenv("BASTYLE_DATABASE_DSN", "postgres://env-user:env-pass@postgres:5432/bastyle?sslmode=disable")
+	t.Setenv("BASTYLE_RABBITMQ_URL", "amqp://env-user:env-pass@rabbitmq:5672/")
+	t.Setenv("BASTYLE_TELEGRAM_TOKEN", "env-token")
+
+	path := writeConfig(t, `
+telegram:
+  token: ""
+database:
+  dsn: ""
+rabbitmq:
+  url: ""
+outbox_publisher:
+  enabled: true
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Database.DSN != "postgres://env-user:env-pass@postgres:5432/bastyle?sslmode=disable" {
+		t.Fatalf("неожиданное значение DSN БД из env: %q", cfg.Database.DSN)
+	}
+	if cfg.RabbitMQ.URL != "amqp://env-user:env-pass@rabbitmq:5672/" {
+		t.Fatalf("неожиданное значение RabbitMQ URL из env: %q", cfg.RabbitMQ.URL)
+	}
+	if cfg.Telegram.Token != "env-token" {
+		t.Fatalf("неожиданное значение Telegram token из env: %q", cfg.Telegram.Token)
+	}
+}
+
+func TestLoadIgnoresBlankSecretEnvOverrides(t *testing.T) {
+	t.Setenv("BASTYLE_DATABASE_DSN", " \t\n ")
+	t.Setenv("BASTYLE_RABBITMQ_URL", " \t\n ")
+	t.Setenv("BASTYLE_TELEGRAM_TOKEN", " \t\n ")
+
+	path := writeConfig(t, `
+telegram:
+  token: "yaml-token"
+database:
+  dsn: "postgres://yaml-user:yaml-pass@postgres:5432/bastyle?sslmode=disable"
+rabbitmq:
+  url: "amqp://yaml-user:yaml-pass@rabbitmq:5672/"
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Database.DSN != "postgres://yaml-user:yaml-pass@postgres:5432/bastyle?sslmode=disable" {
+		t.Fatalf("неожиданное значение DSN БД после пустого env: %q", cfg.Database.DSN)
+	}
+	if cfg.RabbitMQ.URL != "amqp://yaml-user:yaml-pass@rabbitmq:5672/" {
+		t.Fatalf("неожиданное значение RabbitMQ URL после пустого env: %q", cfg.RabbitMQ.URL)
+	}
+	if cfg.Telegram.Token != "yaml-token" {
+		t.Fatalf("неожиданное значение Telegram token после пустого env: %q", cfg.Telegram.Token)
+	}
+}
+
 func TestLoadRejectsDeprecatedMatcherDBPath(t *testing.T) {
 	path := writeConfig(t, `
 telegram:

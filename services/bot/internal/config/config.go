@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Seraf-seraf/bastyle_blacklist/internal/pkg/apperrors"
@@ -246,11 +247,25 @@ func Load(path string) (Config, error) {
 		return Config{}, apperrors.Wrap(methodCtx, err)
 	}
 
+	applyEnvOverrides(&cfg)
+
 	if err := cfg.validate(); err != nil {
 		return Config{}, apperrors.Wrap(methodCtx, err)
 	}
 
 	return cfg, nil
+}
+
+func applyEnvOverrides(cfg *Config) {
+	if value := strings.TrimSpace(os.Getenv("BASTYLE_DATABASE_DSN")); value != "" {
+		cfg.Database.DSN = value
+	}
+	if value := strings.TrimSpace(os.Getenv("BASTYLE_RABBITMQ_URL")); value != "" {
+		cfg.RabbitMQ.URL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("BASTYLE_TELEGRAM_TOKEN")); value != "" {
+		cfg.Telegram.Token = value
+	}
 }
 
 func defaultConfig() Config {
