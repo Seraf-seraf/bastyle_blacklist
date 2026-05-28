@@ -373,6 +373,27 @@ Faiss index и runtime-данных. Контейнер Go-бота ограни
 make install-platform
 ```
 
+Эта команда устанавливает HashiCorp Vault и Vault Secrets Operator. Helm chart
+приложения использует ресурсы оператора `VaultAuth`, `VaultDynamicSecret` и
+`VaultStaticSecret`, поэтому устанавливать приложение до появления CRD нельзя.
+Если запустить `helm upgrade --install bastyle infra/helm/bastyle/` напрямую,
+Helm завершится ошибкой вида `no matches for kind "VaultAuth" in version
+"secrets.hashicorp.com/v1beta1"`.
+
+Проверьте, что CRD оператора зарегистрированы:
+
+```bash
+kubectl get crd vaultauths.secrets.hashicorp.com \
+  vaultdynamicsecrets.secrets.hashicorp.com \
+  vaultstaticsecrets.secrets.hashicorp.com
+```
+
+Проверьте, что Vault Secrets Operator запущен:
+
+```bash
+kubectl rollout status deployment/vault-secrets-operator-controller-manager -n vault
+```
+
 Инициализируйте и распечатайте Vault:
 
 ```bash
