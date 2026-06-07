@@ -13,11 +13,11 @@ migrations:
   backoffLimit: 0
   dir: "/app/migrations"
   image:
-    repository: "bastyle-migrations"
+    repository: "bastyle/blacklist-migrations"
     tag: "local"
 
 serviceAccount:
-  name: "bastyle-blacklist"
+  name: "blacklist"
 
 bot:
   replicaCount: 2
@@ -30,19 +30,19 @@ bot:
   runtimeSecrets:
     enabled: true
     database:
-      name: "bastyle-postgres-runtime"
+      name: "blacklist-postgres-runtime"
       key: "BASTYLE_DATABASE_DSN"
     rabbitmq:
-      name: "bastyle-rabbitmq-runtime"
+      name: "blacklist-rabbitmq-runtime"
       key: "BASTYLE_RABBITMQ_URL"
     telegram:
-      name: "bastyle-telegram-runtime"
+      name: "blacklist-telegram-runtime"
       key: "BASTYLE_TELEGRAM_TOKEN"
 
 aimatcher:
   enabled: true
   image:
-    repository: "bastyle/bastyle-aimatcher"
+    repository: "bastyle/blacklist-aimatcher"
     tag: "latest"
   containerPort: 8080
   configPath: "/etc/bastyle/config.yaml"
@@ -51,26 +51,26 @@ service:
   type: ClusterIP
 
 configSecret:
-  existingSecret: "bastyle-config"
+  existingSecret: "blacklist-config"
   configKey: "config.yaml"
 
 vault:
   enabled: true
   auth:
-    name: "bastyle-vault-auth"
+    name: "blacklist-vault-auth"
     mount: "kubernetes"
-    role: "bastyle-blacklist"
+    role: "blacklist"
   postgres:
     mount: "database"
-    path: "creds/bastyle-app"
+    path: "creds/blacklist"
     sslMode: "disable"
   rabbitmq:
     mount: "rabbitmq"
-    path: "creds/bastyle-app"
+    path: "creds/blacklist"
     vhost: "/"
   telegram:
     mount: "kv"
-    path: "bastyle/telegram"
+    path: "blacklist/telegram"
     refreshAfter: "1h"
 
 metrics:

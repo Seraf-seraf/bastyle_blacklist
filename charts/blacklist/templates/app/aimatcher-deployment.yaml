@@ -2,15 +2,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "bastyle.fullname" . }}-aimatcher
+  name: {{ include "blacklist.fullname" . }}-aimatcher
   labels:
-    {{- include "bastyle.labels" . | nindent 4 }}
+    {{- include "blacklist.labels" . | nindent 4 }}
     app.kubernetes.io/component: aimatcher
 spec:
   replicas: {{ default 1 .Values.aimatcher.replicaCount }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "bastyle.name" . }}
+      app.kubernetes.io/name: {{ include "blacklist.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/component: aimatcher
   template:
@@ -22,7 +22,7 @@ spec:
         prometheus.io/path: "/metrics"
       {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "bastyle.name" . }}
+        app.kubernetes.io/name: {{ include "blacklist.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: aimatcher
     spec:
@@ -58,5 +58,5 @@ spec:
       volumes:
         - name: config
           secret:
-            secretName: {{ include "bastyle.configSecretName" . }}
+            secretName: {{ include "blacklist.configSecretName" . }}
 {{- end }}

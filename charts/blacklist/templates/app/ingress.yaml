@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "bastyle.fullname" . }}-bot
+  name: {{ include "blacklist.fullname" . }}-bot
   labels:
-    {{- include "bastyle.labels" . | nindent 4 }}
+    {{- include "blacklist.labels" . | nindent 4 }}
     app.kubernetes.io/component: bot
   {{- if .Values.ingress.tls.enabled }}
   annotations:
@@ -28,7 +28,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "bastyle.fullname" . }}-bot
+                name: {{ include "blacklist.fullname" . }}-bot
                 port:
                   name: http
 {{- end }}

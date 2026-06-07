@@ -1,4 +1,4 @@
-Bastyle Helm chart has been rendered.
+Blacklist Helm chart has been rendered.
 
 Release:
   Name: {{ .Release.Name }}
@@ -6,8 +6,8 @@ Release:
 
 Useful commands:
 
-  helm lint charts/bastyle
+  helm lint charts/blacklist
 
-  helm template {{ .Release.Name }} charts/bastyle
+  helm template {{ .Release.Name }} charts/blacklist
 
   kubectl get pods -n {{ .Release.Namespace }}

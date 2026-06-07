@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "bastyle.fullname" . }}-bot
+  name: {{ include "blacklist.fullname" . }}-bot
   labels:
-    {{- include "bastyle.labels" . | nindent 4 }}
+    {{- include "blacklist.labels" . | nindent 4 }}
     app.kubernetes.io/component: bot
 spec:
   type: {{ .Values.service.type }}
   selector:
-    app.kubernetes.io/name: {{ include "bastyle.name" . }}
+    app.kubernetes.io/name: {{ include "blacklist.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: bot
   ports:
@@ -25,14 +25,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "bastyle.fullname" . }}-aimatcher
+  name: {{ include "blacklist.fullname" . }}-aimatcher
   labels:
-    {{- include "bastyle.labels" . | nindent 4 }}
+    {{- include "blacklist.labels" . | nindent 4 }}
     app.kubernetes.io/component: aimatcher
 spec:
   type: {{ .Values.service.type }}
   selector:
-    app.kubernetes.io/name: {{ include "bastyle.name" . }}
+    app.kubernetes.io/name: {{ include "blacklist.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: aimatcher
   ports:

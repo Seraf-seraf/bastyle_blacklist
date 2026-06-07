@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "bastyle.name" -}}
+{{- define "blacklist.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "bastyle.fullname" -}}
+{{- define "blacklist.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -26,16 +26,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "bastyle.chart" -}}
+{{- define "blacklist.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "bastyle.labels" -}}
-helm.sh/chart: {{ include "bastyle.chart" . }}
-{{ include "bastyle.selectorLabels" . }}
+{{- define "blacklist.labels" -}}
+helm.sh/chart: {{ include "blacklist.chart" . }}
+{{ include "blacklist.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,30 +45,30 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "bastyle.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "bastyle.name" . }}
+{{- define "blacklist.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "blacklist.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "bastyle.serviceAccountName" -}}
+{{- define "blacklist.serviceAccountName" -}}
 {{- $serviceAccount := default dict .Values.serviceAccount -}}
-{{- default (include "bastyle.fullname" .) $serviceAccount.name }}
+{{- default (include "blacklist.fullname" .) $serviceAccount.name }}
 {{- end }}
 
 {{/*
 Return the Kubernetes ConfigMap name that contains bot config.yaml.
 */}}
-{{- define "bastyle.botConfigMapName" -}}
-{{- printf "%s-bot-config" (include "bastyle.fullname" .) -}}
+{{- define "blacklist.botConfigMapName" -}}
+{{- printf "%s-bot-config" (include "blacklist.fullname" .) -}}
 {{- end -}}
 
 {{/*
 Return "true" when bot uses runtime secrets from Vault/VSO.
 */}}
-{{- define "bastyle.botRuntimeSecretsEnabled" -}}
+{{- define "blacklist.botRuntimeSecretsEnabled" -}}
 {{- $bot := default dict .Values.bot -}}
 {{- $runtimeSecrets := default dict $bot.runtimeSecrets -}}
 {{- if (default false $runtimeSecrets.enabled) -}}true{{- end -}}
@@ -77,10 +77,10 @@ Return "true" when bot uses runtime secrets from Vault/VSO.
 {{/*
 Return the Kubernetes Secret name that contains full config.yaml.
 */}}
-{{- define "bastyle.configSecretName" -}}
+{{- define "blacklist.configSecretName" -}}
 {{- if .Values.configSecret.existingSecret -}}
 {{- .Values.configSecret.existingSecret -}}
 {{- else -}}
-{{- printf "%s-config" (include "bastyle.fullname" .) -}}
+{{- printf "%s-config" (include "blacklist.fullname" .) -}}
 {{- end -}}
 {{- end -}}

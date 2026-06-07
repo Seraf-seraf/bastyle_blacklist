@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "bastyle.fullname" . }}-bot
+  name: {{ include "blacklist.fullname" . }}-bot
   labels:
-    {{- include "bastyle.labels" . | nindent 4 }}
+    {{- include "blacklist.labels" . | nindent 4 }}
     app.kubernetes.io/component: bot
 spec:
   replicas: {{ .Values.bot.replicaCount }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "bastyle.name" . }}
+      app.kubernetes.io/name: {{ include "blacklist.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/component: bot
   template:
@@ -21,11 +21,11 @@ spec:
         prometheus.io/path: "/metrics"
       {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "bastyle.name" . }}
+        app.kubernetes.io/name: {{ include "blacklist.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: bot
     spec:
-      serviceAccountName: {{ include "bastyle.serviceAccountName" . }}
+      serviceAccountName: {{ include "blacklist.serviceAccountName" . }}
       containers:
         - name: bot
           image: "{{ .Values.bot.image.repository }}:{{ .Values.bot.image.tag }}"
@@ -40,7 +40,7 @@ spec:
           args:
             - "-config"
             - "{{ .Values.bot.configPath }}"
-          {{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+          {{- if (include "blacklist.botRuntimeSecretsEnabled" .) }}
           env:
             - name: BASTYLE_DATABASE_DSN
               valueFrom:
@@ -81,10 +81,10 @@ spec:
               readOnly: true
       volumes:
         - name: config
-          {{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+          {{- if (include "blacklist.botRuntimeSecretsEnabled" .) }}
           configMap:
-            name: {{ include "bastyle.botConfigMapName" . }}
+            name: {{ include "blacklist.botConfigMapName" . }}
           {{- else }}
           secret:
-            secretName: {{ include "bastyle.configSecretName" . }}
+            secretName: {{ include "blacklist.configSecretName" . }}
           {{- end }}

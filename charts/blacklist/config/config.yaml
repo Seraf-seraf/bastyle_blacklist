@@ -99,7 +99,7 @@ matching:
     min_matched_ratio: 0.4
     request_timeout: 10s
     service:
-      host: "bastyle-aimatcher"
+      host: "blacklist-aimatcher"
       port: 8080
     hnsw:
       m: 32

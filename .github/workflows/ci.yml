@@ -49,9 +49,9 @@ jobs:
     strategy:
       matrix:
         image:
-          - name: bastyle-blacklist
+          - name: blacklist
             dockerfile: docker/Dockerfile.bot
-          - name: bastyle-aimatcher
+          - name: blacklist-aimatcher
             dockerfile: docker/Dockerfile.aimatcher
     steps:
       - name: Checkout

@@ -2,9 +2,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "bastyle.fullname" . }}-migrations
+  name: {{ include "blacklist.fullname" . }}-migrations
   labels:
-    {{- include "bastyle.labels" . | nindent 4 }}
+    {{- include "blacklist.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrations
   annotations:
     "helm.sh/hook": post-install,post-upgrade
@@ -14,7 +14,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "bastyle.name" . }}
+        app.kubernetes.io/name: {{ include "blacklist.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: migrations
     spec:
@@ -51,5 +51,5 @@ spec:
       volumes:
         - name: config
           secret:
-            secretName: {{ include "bastyle.configSecretName" . }}
+            secretName: {{ include "blacklist.configSecretName" . }}
 {{- end }}

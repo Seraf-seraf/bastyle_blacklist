@@ -8,7 +8,7 @@ set -euo pipefail
 : "${RABBITMQ_ADMIN_PASSWORD:?RABBITMQ_ADMIN_PASSWORD is required}"
 
 BASTYLE_NAMESPACE="${BASTYLE_NAMESPACE:-bastyle}"
-BASTYLE_SERVICE_ACCOUNT="${BASTYLE_SERVICE_ACCOUNT:-bastyle-blacklist}"
+BASTYLE_SERVICE_ACCOUNT="${BASTYLE_SERVICE_ACCOUNT:-blacklist}"
 POSTGRES_HOST="${POSTGRES_HOST:-bastyle-postgresql-rw}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DATABASE="${POSTGRES_DATABASE:-bastyle}"
@@ -17,18 +17,18 @@ RABBITMQ_HTTP_URL="${RABBITMQ_HTTP_URL:-http://bastyle-rabbitmq:15672}"
 RABBITMQ_ADMIN_USER="${RABBITMQ_ADMIN_USER:-vault_admin}"
 
 vault secrets enable -path=kv kv-v2 || true
-vault kv put kv/bastyle/telegram token="${TELEGRAM_TOKEN}"
+vault kv put kv/blacklist/telegram token="${TELEGRAM_TOKEN}"
 
 vault secrets enable database || true
 
 vault write database/config/bastyle-postgres \
   plugin_name=postgresql-database-plugin \
-  allowed_roles=bastyle-app \
+  allowed_roles=blacklist \
   connection_url="postgresql://{{username}}:{{password}}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?sslmode=disable" \
   username="${POSTGRES_ADMIN_USER}" \
   password="${POSTGRES_ADMIN_PASSWORD}"
 
-vault write database/roles/bastyle-app \
+vault write database/roles/blacklist \
   db_name=bastyle-postgres \
   creation_statements="
     CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';
@@ -47,7 +47,7 @@ vault write rabbitmq/config/connection \
   username="${RABBITMQ_ADMIN_USER}" \
   password="${RABBITMQ_ADMIN_PASSWORD}"
 
-vault write rabbitmq/roles/bastyle-app \
+vault write rabbitmq/roles/blacklist \
   vhosts='{"/":{"configure":"","write":".*","read":".*"}}'
 
 vault auth enable kubernetes || true
@@ -55,22 +55,22 @@ vault auth enable kubernetes || true
 vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc"
 
-vault policy write bastyle-blacklist - <<EOPOLICY
-path "kv/data/bastyle/telegram" {
+vault policy write blacklist - <<EOPOLICY
+path "kv/data/blacklist/telegram" {
   capabilities = ["read"]
 }
 
-path "database/creds/bastyle-app" {
+path "database/creds/blacklist" {
   capabilities = ["read"]
 }
 
-path "rabbitmq/creds/bastyle-app" {
+path "rabbitmq/creds/blacklist" {
   capabilities = ["read"]
 }
 EOPOLICY
 
-vault write auth/kubernetes/role/bastyle-blacklist \
+vault write auth/kubernetes/role/blacklist \
   bound_service_account_names="${BASTYLE_SERVICE_ACCOUNT}" \
   bound_service_account_namespaces="${BASTYLE_NAMESPACE}" \
-  policies=bastyle-blacklist \
+  policies=blacklist \
   ttl=24h

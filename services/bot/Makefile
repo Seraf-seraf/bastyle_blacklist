@@ -1,4 +1,4 @@
-APP := bastyle-blacklist
+APP := blacklist
 BUILD_DIR := ../../bin
 MIGRATIONS_DIR := internal/adapters/database/postgres/migrations
 CONFIG ?= ../../config/config.yaml

@@ -6,7 +6,7 @@ COPY services/bot/go.mod services/bot/go.sum ./
 RUN go mod download
 
 COPY services/bot/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bastyle-blacklist ./cmd/
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/blacklist ./cmd/
 
 FROM debian:bookworm-slim
 
@@ -18,10 +18,10 @@ RUN useradd --system --home-dir /var/lib/bastyle --create-home --shell /usr/sbin
 	&& mkdir -p /etc/bastyle /var/lib/bastyle \
 	&& chown -R bastyle:bastyle /var/lib/bastyle
 
-COPY --from=builder /out/bastyle-blacklist /usr/local/bin/bastyle-blacklist
+COPY --from=builder /out/blacklist /usr/local/bin/blacklist
 
 USER bastyle
 WORKDIR /var/lib/bastyle
 
-ENTRYPOINT ["/usr/local/bin/bastyle-blacklist"]
+ENTRYPOINT ["/usr/local/bin/blacklist"]
 CMD ["-config", "/etc/bastyle/config.yaml"]

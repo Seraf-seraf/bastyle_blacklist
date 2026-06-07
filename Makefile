@@ -54,13 +54,13 @@ db-status:
 migrate: db-up
 
 docker-build-bot:
-	docker build -f docker/Dockerfile.bot -t bastyle-blacklist:local .
+	docker build -f docker/Dockerfile.bot -t blacklist:local .
 
 docker-build-aimatcher:
-	docker build -f docker/Dockerfile.aimatcher -t bastyle-aimatcher:local .
+	docker build -f docker/Dockerfile.aimatcher -t blacklist-aimatcher:local .
 
 docker-build-migrations:
-	docker build -f docker/Dockerfile.migrations -t bastyle-migrations:local .
+	docker build -f docker/Dockerfile.migrations -t blacklist-migrations:local .
 
 bootstrap-vault:
 	scripts/bootstrap-vault.sh
@@ -69,10 +69,10 @@ install-app:
 	scripts/install-app.sh
 
 helm-lint:
-	helm lint charts/bastyle
+	helm lint charts/blacklist
 
 helm-template:
-	helm template bastyle charts/bastyle --namespace bastyle
+	helm template blacklist charts/blacklist --namespace bastyle
 
 ci:
 	$(MAKE) -C $(BOT_DIR) ci

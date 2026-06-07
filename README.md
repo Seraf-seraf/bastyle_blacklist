@@ -27,7 +27,7 @@
 ## Структура
 
 ```text
-charts/bastyle/   Helm chart приложения
+charts/blacklist/ Helm chart приложения
 config/           пример конфигурации
 docker/           Dockerfiles bot, aimatcher и migrations
 scripts/          установка приложения и bootstrap его Vault policy
@@ -82,7 +82,7 @@ make bootstrap-vault
 make install-app
 ```
 
-Параметры подключения задаются в `charts/bastyle/values.yaml`:
+Параметры подключения задаются в `charts/blacklist/values.yaml`:
 
 - `dependencies.postgresql`;
 - `dependencies.rabbitmq`;
