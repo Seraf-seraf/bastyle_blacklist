@@ -24,7 +24,7 @@ serviceAccount:
 bot:
   replicaCount: 2
   image:
-    repository: "your-registry/bastyle-blacklist"
+    repository: "bastyle/blacklist"
     tag: "latest"
   containerPort: 8081
   metricsPort: 9090
@@ -44,7 +44,7 @@ bot:
 aimatcher:
   enabled: true
   image:
-    repository: "your-registry/bastyle-aimatcher"
+    repository: "bastyle/bastyle-aimatcher"
     tag: "latest"
   containerPort: 8080
   configPath: "/etc/bastyle/config.yaml"
@@ -127,3 +127,13 @@ monitoring:
       enabled: true
       storageSize: "2Gi"
       storageClassName: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: blacklist.bastyle.tech
+  tls:
+    enabled: true
+    secretName: blacklist-bastyle-tech-tls
+  certManager:
+    clusterIssuer: letsencrypt-prod
