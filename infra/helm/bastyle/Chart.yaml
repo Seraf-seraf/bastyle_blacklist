@@ -1,7 +1,0 @@
-apiVersion: v2
-name: bastyle
-description: Helm chart for Bastyle
-type: application
-version: 2.0.0
-appVersion: "2.0.0"
-icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS0crw2cupv3VQvRWBLQMVj0aK9SU0enDAqVQ&s"

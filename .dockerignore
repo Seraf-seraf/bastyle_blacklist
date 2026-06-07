@@ -4,7 +4,7 @@
 .codex
 .venv
 .pytest_cache
-infra/bin
+bin
 docs
 vendor
 data
@@ -15,4 +15,4 @@ data
 bastyle
 main
 .env
-infra/config/config.yaml
+config/config.yaml

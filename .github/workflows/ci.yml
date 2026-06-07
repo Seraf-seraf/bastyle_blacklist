@@ -50,9 +50,9 @@ jobs:
       matrix:
         image:
           - name: bastyle-blacklist
-            dockerfile: infra/docker/Dockerfile.bot
+            dockerfile: docker/Dockerfile.bot
           - name: bastyle-aimatcher
-            dockerfile: infra/docker/Dockerfile.aimatcher
+            dockerfile: docker/Dockerfile.aimatcher
     steps:
       - name: Checkout
         uses: actions/checkout@v4

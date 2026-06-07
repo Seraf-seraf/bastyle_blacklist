@@ -1,0 +1,13 @@
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates bash curl yq postgresql-client \
+  && curl -fsSL https://github.com/pressly/goose/releases/download/v3.24.3/goose_linux_x86_64 \
+    -o /usr/local/bin/goose \
+  && chmod +x /usr/local/bin/goose
+
+WORKDIR /app
+
+COPY services/bot/internal/adapters/database/postgres/migrations ./migrations
+COPY scripts/database-dsn.sh ./scripts/database-dsn.sh
+
+ENTRYPOINT ["goose"]

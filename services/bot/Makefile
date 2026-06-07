@@ -1,8 +1,8 @@
 APP := bastyle-blacklist
-BUILD_DIR := ../../infra/bin
+BUILD_DIR := ../../bin
 MIGRATIONS_DIR := internal/adapters/database/postgres/migrations
-CONFIG ?= ../../infra/config/config.yaml
-DB_DSN ?= $(shell ../../infra/scripts/database-dsn.sh "$(CONFIG)" 2>/dev/null)
+CONFIG ?= ../../config/config.yaml
+DB_DSN ?= $(shell ../../scripts/database-dsn.sh "$(CONFIG)" 2>/dev/null)
 GOOSE_TAGS := no_mysql no_sqlite3 no_ydb no_clickhouse no_mssql no_vertica no_turso
 GOOSE := GOFLAGS=-mod=mod go run -tags '$(GOOSE_TAGS)' github.com/pressly/goose/v3/cmd/goose@v3.27.0
 

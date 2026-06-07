@@ -1,8 +1,7 @@
 BOT_DIR := services/bot
 AIMATCHER_DIR := services/aimatcher
-COMPOSE := docker compose -f infra/docker-compose.yaml --project-directory .
 
-.PHONY: help fmt fmt-check vet test build clean db-up db-down db-status db-logs db-shell migrate up stop down ps logs ci docker-build-bot docker-build-aimatcher docker-build-postgres-exporter install-platform bootstrap-vault install-app
+.PHONY: help fmt fmt-check vet test build clean db-up db-down db-status migrate ci docker-build-bot docker-build-aimatcher docker-build-migrations bootstrap-vault install-app helm-lint helm-template
 
 help:
 	@echo "Доступные команды:"
@@ -15,21 +14,14 @@ help:
 	@echo "  make db-up     - применить PostgreSQL migrations через goose"
 	@echo "  make db-down   - откатить последнюю PostgreSQL migration через goose"
 	@echo "  make db-status - показать статус PostgreSQL migrations через goose"
-	@echo "  make db-logs   - показать логи PostgreSQL контейнера"
-	@echo "  make db-shell  - открыть psql в PostgreSQL контейнере"
-	@echo "  make migrate   - применить PostgreSQL migrations"
+	@echo "  make migrate DB_DSN=... - применить PostgreSQL migrations"
 	@echo "  make ci        - полный прогон: vet + test + build"
-	@echo "  make up        - запуск сервисов через Docker Compose (build + detached)"
-	@echo "  make stop      - остановка контейнеров без удаления"
-	@echo "  make down      - остановка и удаление контейнеров"
-	@echo "  make ps        - статус контейнеров в табличном виде"
-	@echo "  make logs      - логи всех сервисов (follow)"
 	@echo "  make docker-build-bot - собрать локальный образ Go-бота"
 	@echo "  make docker-build-aimatcher - собрать локальный образ AI matcher"
-	@echo "  make docker-build-postgres-exporter - собрать локальный образ PostgreSQL exporter"
-	@echo "  make install-platform - установить Vault и Vault Secrets Operator в Kubernetes"
+	@echo "  make docker-build-migrations - собрать образ миграций"
 	@echo "  make bootstrap-vault - настроить Vault engines, policy и Kubernetes auth"
 	@echo "  make install-app - установить Helm chart приложения в Kubernetes"
+	@echo "  make helm-lint - проверить Helm chart приложения"
 
 fmt:
 	$(MAKE) -C $(BOT_DIR) fmt
@@ -59,47 +51,30 @@ db-down:
 db-status:
 	$(MAKE) -C $(BOT_DIR) db-status
 
-db-logs:
-	$(COMPOSE) logs -f bastyle-postgresql
-
-db-shell:
-	$(COMPOSE) exec bastyle-postgresql psql -U bastyle -d bastyle
-
 migrate: db-up
 
-up:
-	$(COMPOSE) up -d --build --pull missing
-
-stop:
-	$(COMPOSE) stop
-
-down:
-	$(COMPOSE) down
-
-ps:
-	$(COMPOSE) ps
-
-logs:
-	$(COMPOSE) logs -f
-
 docker-build-bot:
-	docker build -f infra/docker/Dockerfile.bot -t bastyle-blacklist:local .
+	docker build -f docker/Dockerfile.bot -t bastyle-blacklist:local .
 
 docker-build-aimatcher:
-	docker build -f infra/docker/Dockerfile.aimatcher -t bastyle-aimatcher:local .
+	docker build -f docker/Dockerfile.aimatcher -t bastyle-aimatcher:local .
 
-docker-build-postgres-exporter:
-	docker build -f infra/docker/Dockerfile.postgres-exporter -t bastyle-postgres-exporter:local .
-
-install-platform:
-	infra/scripts/install-platform.sh
+docker-build-migrations:
+	docker build -f docker/Dockerfile.migrations -t bastyle-migrations:local .
 
 bootstrap-vault:
-	infra/scripts/bootstrap-vault.sh
+	scripts/bootstrap-vault.sh
 
 install-app:
-	infra/scripts/install-app.sh
+	scripts/install-app.sh
+
+helm-lint:
+	helm lint charts/bastyle
+
+helm-template:
+	helm template bastyle charts/bastyle --namespace bastyle
 
 ci:
 	$(MAKE) -C $(BOT_DIR) ci
 	$(MAKE) -C $(AIMATCHER_DIR) test
+	$(MAKE) helm-lint

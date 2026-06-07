@@ -7,11 +7,11 @@
 *.sqlite-wal
 vendor/
 main
-infra/bin/
+bin/
 data/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
 AGENTS.md
-infra/config/config.yaml
+config/config.yaml

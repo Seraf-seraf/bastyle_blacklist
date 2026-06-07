@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bastyle.fullname" . }}-bot
+  labels:
+    {{- include "bastyle.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bot
+spec:
+  replicas: {{ .Values.bot.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bastyle.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: bot
+  template:
+    metadata:
+      {{- if .Values.metrics.podAnnotations.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.bot.metricsPort | quote }}
+        prometheus.io/path: "/metrics"
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "bastyle.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: bot
+    spec:
+      serviceAccountName: {{ include "bastyle.serviceAccountName" . }}
+      containers:
+        - name: bot
+          image: "{{ .Values.bot.image.repository }}:{{ .Values.bot.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.bot.containerPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.bot.metricsPort }}
+              protocol: TCP
+          args:
+            - "-config"
+            - "{{ .Values.bot.configPath }}"
+          {{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+          env:
+            - name: BASTYLE_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.database.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.database.key | quote }}
+            - name: BASTYLE_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.rabbitmq.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.rabbitmq.key | quote }}
+            - name: BASTYLE_TELEGRAM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.telegram.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.telegram.key | quote }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: {{ .Values.bot.configPath }}
+              subPath: {{ .Values.configSecret.configKey }}
+              readOnly: true
+      volumes:
+        - name: config
+          {{- if (include "bastyle.botRuntimeSecretsEnabled" .) }}
+          configMap:
+            name: {{ include "bastyle.botConfigMapName" . }}
+          {{- else }}
+          secret:
+            secretName: {{ include "bastyle.configSecretName" . }}
+          {{- end }}
