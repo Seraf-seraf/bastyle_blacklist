@@ -50,10 +50,6 @@ aimatcher:
 service:
   type: ClusterIP
 
-configSecret:
-  existingSecret: "blacklist-config"
-  configKey: "config.yaml"
-
 vault:
   enabled: true
   auth:

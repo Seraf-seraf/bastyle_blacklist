@@ -77,7 +77,7 @@ spec:
           volumeMounts:
             - name: config
               mountPath: {{ .Values.bot.configPath }}
-              subPath: {{ .Values.configSecret.configKey }}
+              subPath: config.yaml
               readOnly: true
       volumes:
         - name: config

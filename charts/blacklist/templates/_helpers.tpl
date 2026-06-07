@@ -73,14 +73,3 @@ Return "true" when bot uses runtime secrets from Vault/VSO.
 {{- $runtimeSecrets := default dict $bot.runtimeSecrets -}}
 {{- if (default false $runtimeSecrets.enabled) -}}true{{- end -}}
 {{- end -}}
-
-{{/*
-Return the Kubernetes Secret name that contains full config.yaml.
-*/}}
-{{- define "blacklist.configSecretName" -}}
-{{- if .Values.configSecret.existingSecret -}}
-{{- .Values.configSecret.existingSecret -}}
-{{- else -}}
-{{- printf "%s-config" (include "blacklist.fullname" .) -}}
-{{- end -}}
-{{- end -}}

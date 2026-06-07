@@ -1,4 +1,3 @@
-{{- if (include "blacklist.botRuntimeSecretsEnabled" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,4 +7,3 @@ metadata:
     app.kubernetes.io/component: bot
 data:
   config.yaml: {{ .Files.Get "config/config.yaml" | quote }}
-{{- end }}

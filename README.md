@@ -71,7 +71,14 @@ make docker-build-migrations
 - ingress-nginx и cert-manager;
 - Vault и Vault Secrets Operator.
 
-После подготовки зависимостей настройте Vault policy и установите Helm chart:
+Также необходимы:
+
+- DNS-запись для `blacklist.bastyle.tech`;
+- образы bot, aimatcher и migrations в доступном кластеру registry;
+- настроенные административные учётные данные PostgreSQL и RabbitMQ для Vault.
+
+Заполните `.env` по примеру `.env.example`, настройте Vault policy и
+установите Helm chart:
 
 ```bash
 set -a
@@ -92,3 +99,15 @@ make install-app
 
 По умолчанию используются Kubernetes services `bastyle-postgresql-rw` и
 `bastyle-rabbitmq` в namespace релиза.
+
+Chart создаёт:
+
+- Deployment и Service для bot и aimatcher;
+- Ingress для публичного HTTP endpoint;
+- ConfigMap с несекретной конфигурацией;
+- Vault resources для PostgreSQL, RabbitMQ и Telegram credentials;
+- Job миграций PostgreSQL.
+
+Секретные значения не хранятся в values: Vault Secrets Operator создаёт
+`blacklist-postgres-runtime`, `blacklist-rabbitmq-runtime` и
+`blacklist-telegram-runtime`.

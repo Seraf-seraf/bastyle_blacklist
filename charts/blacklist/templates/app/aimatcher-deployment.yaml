@@ -30,6 +30,19 @@ spec:
         - name: aimatcher
           image: "{{ .Values.aimatcher.image.repository }}:{{ .Values.aimatcher.image.tag }}"
           imagePullPolicy: IfNotPresent
+          {{- if (include "blacklist.botRuntimeSecretsEnabled" .) }}
+          env:
+            - name: BASTYLE_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.database.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.database.key | quote }}
+            - name: BASTYLE_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.rabbitmq.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.rabbitmq.key | quote }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.aimatcher.containerPort }}
@@ -53,10 +66,10 @@ spec:
           volumeMounts:
             - name: config
               mountPath: {{ .Values.aimatcher.configPath }}
-              subPath: {{ .Values.configSecret.configKey }}
+              subPath: config.yaml
               readOnly: true
       volumes:
         - name: config
-          secret:
-            secretName: {{ include "blacklist.configSecretName" . }}
+          configMap:
+            name: {{ include "blacklist.botConfigMapName" . }}
 {{- end }}

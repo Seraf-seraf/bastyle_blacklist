@@ -23,6 +23,12 @@ spec:
         - name: migrations
           image: "{{ .Values.migrations.image.repository }}:{{ .Values.migrations.image.tag }}"
           imagePullPolicy: IfNotPresent
+          env:
+            - name: BASTYLE_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bot.runtimeSecrets.database.name | quote }}
+                  key: {{ .Values.bot.runtimeSecrets.database.key | quote }}
           command:
             - /bin/sh
             - -c
@@ -41,15 +47,6 @@ spec:
               -dir {{ .Values.migrations.dir }}
               -table postgres_schema_migrations
               postgres
-              "$(/bin/sh /app/scripts/database-dsn.sh /etc/bastyle/config.yaml)"
+              "$BASTYLE_DATABASE_DSN"
               up
-          volumeMounts:
-            - name: config
-              mountPath: /etc/bastyle/config.yaml
-              subPath: config.yaml
-              readOnly: true
-      volumes:
-        - name: config
-          secret:
-            secretName: {{ include "blacklist.configSecretName" . }}
 {{- end }}

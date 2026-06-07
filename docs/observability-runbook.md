@@ -1,6 +1,6 @@
 # Runbook наблюдаемости
 
-Документ описывает первые проверки для PostgreSQL-backed Bastyle при деградации
+Документ описывает первые проверки Blacklist при деградации
 БД, исходящего журнала и локальных индексов.
 
 ## PostgreSQL недоступен
@@ -14,8 +14,8 @@
 Проверки:
 
 1. Проверить pod/service PostgreSQL и exporter.
-2. Проверить, что exporter смонтировал `bastyle-config` и читает `database.dsn`
-   из `/etc/bastyle/config.yaml` без вывода DSN в логи.
+2. Проверить наличие Secret `blacklist-postgres-runtime` и ключа
+   `BASTYLE_DATABASE_DSN`. Значение DSN в логи не выводить.
 3. Проверить `pg_isready` из внутренней сети кластера.
 4. Проверить лимиты соединений: `bastyle_db_pool_acquired`,
    `bastyle_db_pool_idle`, `pg_stat_database_numbackends`.
