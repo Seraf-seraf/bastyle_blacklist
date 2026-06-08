@@ -70,6 +70,7 @@ make docker-build-migrations
 - PostgreSQL и RabbitMQ;
 - ingress-nginx и cert-manager;
 - Vault и Vault Secrets Operator.
+- Prometheus Operator CRD из `kube-prometheus-stack`.
 
 Также необходимы:
 
@@ -103,6 +104,7 @@ make install-app
 Chart создаёт:
 
 - Deployment и Service для bot и aimatcher;
+- ServiceMonitor для метрик bot и aimatcher;
 - Ingress для публичного HTTP endpoint;
 - ConfigMap с несекретной конфигурацией;
 - Vault resources для PostgreSQL, RabbitMQ и Telegram credentials;
@@ -111,3 +113,7 @@ Chart создаёт:
 Секретные значения не хранятся в values: Vault Secrets Operator создаёт
 `blacklist-postgres-runtime`, `blacklist-rabbitmq-runtime` и
 `blacklist-telegram-runtime`.
+
+Vault bootstrap выполняется только по проверяемому TLS. Перед запуском задайте
+`VAULT_ADDR=https://vault.vault.svc.cluster.local:8200` и `VAULT_CACERT` с
+путем к PEM-файлу внутреннего CA.

@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${VAULT_ADDR:?VAULT_ADDR is required}"
 : "${VAULT_TOKEN:?VAULT_TOKEN is required}"
+: "${VAULT_CACERT:?VAULT_CACERT is required for verified Vault TLS}"
 : "${TELEGRAM_TOKEN:?TELEGRAM_TOKEN is required}"
 : "${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}"
 : "${RABBITMQ_ADMIN_PASSWORD:?RABBITMQ_ADMIN_PASSWORD is required}"

@@ -15,12 +15,6 @@ spec:
       app.kubernetes.io/component: aimatcher
   template:
     metadata:
-      {{- if .Values.metrics.podAnnotations.enabled }}
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.aimatcher.containerPort | quote }}
-        prometheus.io/path: "/metrics"
-      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "blacklist.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}

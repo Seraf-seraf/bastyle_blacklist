@@ -70,8 +70,10 @@ vault:
     refreshAfter: "1h"
 
 metrics:
-  podAnnotations:
+  serviceMonitor:
     enabled: true
+    interval: "30s"
+    scrapeTimeout: "10s"
 
 ingress:
   enabled: true

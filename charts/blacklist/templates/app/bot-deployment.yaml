@@ -14,12 +14,6 @@ spec:
       app.kubernetes.io/component: bot
   template:
     metadata:
-      {{- if .Values.metrics.podAnnotations.enabled }}
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.bot.metricsPort | quote }}
-        prometheus.io/path: "/metrics"
-      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "blacklist.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
