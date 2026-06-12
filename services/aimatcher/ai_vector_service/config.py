@@ -9,6 +9,7 @@ from ai_vector_service.index import HNSWConfig
 DEFAULT_CONFIG_PATH = Path("/etc/bastyle/config.yaml")
 DEFAULT_MODEL_NAME = "nomic-ai/nomic-embed-vision-v1.5"
 DEFAULT_MODEL_REVISION = "e3a725bce72db07ca4adb1d83da08903f3ee02f8"
+DEFAULT_HOST = "0.0.0.0"
 BYTE_UNITS = {
     "b": 1,
     "kb": 1000,
@@ -80,7 +81,7 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
     hnsw = ai_vector.get("hnsw", {})
 
     return Settings(
-        host="0.0.0.0",
+        host=str(service.get("host", DEFAULT_HOST)),
         port=int(service.get("port", 8080)),
         model_name=str(ai_vector.get("model_name", DEFAULT_MODEL_NAME)),
         model_revision=str(ai_vector.get("model_revision", DEFAULT_MODEL_REVISION)),
